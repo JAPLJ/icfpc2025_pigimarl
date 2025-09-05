@@ -12,10 +12,10 @@ class ProblemName(StrEnum):
 
 
 class Problem:
-    name: str
+    name: ProblemName
     size: int
 
-    def __init__(self, name: str, size: int):
+    def __init__(self, name: ProblemName, size: int):
         self.name = name
         self.size = size
 
