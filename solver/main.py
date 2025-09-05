@@ -1,16 +1,17 @@
+from argparse import ArgumentParser
 import random
 
 from api import Client
 from type import PROBLEMS, Graph, Connection
+from yaml import FullLoader, load
 
-PROBLEM_ID = 0
 
+def main(api_domain: str, token: str):
+    client = Client(api_domain, token)
 
-if __name__ == "__main__":
-    client = Client()
-
-    client.select(PROBLEMS[PROBLEM_ID])
-    graph_size = PROBLEMS[PROBLEM_ID].size
+    problem_id = 0
+    client.select(PROBLEMS[problem_id])
+    graph_size = PROBLEMS[problem_id].size
 
     plan = ""
     for i in range(18 * graph_size):
@@ -35,3 +36,16 @@ if __name__ == "__main__":
     })
     response = client.guess(dummy_graph)
     print(f"result: {str(response)}")
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument("--env", type=str, default="local", choices=["local", "production"])
+    args = parser.parse_args()
+
+    with open("config.yaml", "r") as f:
+        config = load(f, Loader=FullLoader)
+    api_domain = config["api_domain"][args.env]
+    token = config["token"]
+
+    main(api_domain, token)
