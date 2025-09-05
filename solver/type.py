@@ -49,6 +49,8 @@ class Graph(BaseModel):
 def check_plans(graph_size: int, plans: list[str]) -> None:
     for plan in plans:
         assert len(plan) <= 18 * graph_size, "パスの長さが 18n を超えています"
+        for door in plan:
+            assert 0 <= int(door) and int(door) <= 5, "door が [0, 5] の範囲外です"
 
 
 def check_graph(graph_size: int, graph: Graph) -> None:
