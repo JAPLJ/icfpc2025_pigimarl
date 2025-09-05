@@ -1,7 +1,7 @@
 import random
 
 from api import Problem, Client
-from api_type import Graph
+from api_type import Graph, Connection
 
 
 problems = [
@@ -15,32 +15,6 @@ problems = [
 
 PROBLEM_ID = 0
 
-DUMMY_GRAPH = Graph(**{
-    "rooms": [0, 1, 2],
-    "startingRoom": 0,
-    "connections": [
-        {
-            "from": {
-                "room": 0,
-                "door": 0
-            },
-            "to": {
-                "room": 1,
-                "door": 1
-            }
-        },
-        {
-            "from": {
-                "room": 2,
-                "door": 2
-            },
-            "to": {
-                "room": 3,
-                "door": 3
-            }
-        }
-    ]
-})
 
 if __name__ == "__main__":
     client = Client()
@@ -51,6 +25,23 @@ if __name__ == "__main__":
     plan = ""
     for i in range(18 * graph_size):
         plan += str(random.randrange(6))
-    response = client.explore(graph_size, [plan])
+    print(f"explore plan: {plan}")
+    response = client.explore([plan])
+    print(f"explore response: {response}")
 
-    client.guess(DUMMY_GRAPH)
+    connections: list[Connection] = []
+    for room in range(graph_size):
+        for door in range(6):
+            connections.append(
+                Connection(**{
+                    "from": {"room": room, "door": door},
+                    "to": {"room": room, "door": door}
+                })
+            )
+    dummy_graph = Graph(**{
+        "rooms": list(range(graph_size)),
+        "startingRoom": 0,
+        "connections": connections
+    })
+    response = client.guess(dummy_graph)
+    print(f"result: {str(response)}")

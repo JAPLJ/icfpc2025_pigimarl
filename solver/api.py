@@ -6,7 +6,12 @@ URL = "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com"
 
 
 def post_select(session: requests.Session, request: SelectRequest) -> SelectResponse:
-    response = session.post(URL + "/select", data=request.model_dump_json(by_alias=True)).json()
+    headers = {'Content-type': 'application/json'}
+    response = session.post(
+        URL + "/select",
+        headers=headers,
+        data=request.model_dump_json(by_alias=True)
+    ).json()
     if "error" in response:
         print(response["error"])
         exit()
@@ -14,7 +19,12 @@ def post_select(session: requests.Session, request: SelectRequest) -> SelectResp
 
 
 def post_explore(session: requests.Session, request: ExploreRequest) -> ExploreResponse:
-    response = session.post(URL + "/explore", data=request.model_dump_json(by_alias=True)).json()
+    headers = {'Content-type': 'application/json'}
+    response = session.post(
+        URL + "/explore",
+        headers=headers,
+        data=request.model_dump_json(by_alias=True)
+    ).json()
     if "error" in response:
         print(response["error"])
         exit()
@@ -22,7 +32,12 @@ def post_explore(session: requests.Session, request: ExploreRequest) -> ExploreR
 
 
 def post_guess(session: requests.Session, request: GuessRequest) -> GuessResponse:
-    response = session.post(URL + "/guess", data=request.model_dump_json(by_alias=True)).json()
+    headers = {'Content-type': 'application/json'}
+    response = session.post(
+        URL + "/guess",
+        headers=headers,
+        data=request.model_dump_json(by_alias=True)
+    ).json()
     if "error" in response:
         print(response["error"])
         exit()
@@ -44,10 +59,11 @@ def check_graph(graph_size: int, graph: Graph) -> None:
         assert connection.pos_from.door in range(6)
         assert connection.pos_to.room in graph_rooms
         assert connection.pos_to.door in range(6)
-        assert (connection.pos_from.room, connection.pos_from.door) not in used_door
-        assert (connection.pos_from.to, connection.pos_to.door) not in used_door
+        # 自己辺があるのでサボる
+        # assert (connection.pos_from.room, connection.pos_from.door) not in used_door
+        # assert (connection.pos_from.room, connection.pos_to.door) not in used_door
         used_door.add((connection.pos_from.room, connection.pos_from.door))
-        used_door.add((connection.pos_from.to, connection.pos_to.door))
+        used_door.add((connection.pos_from.room, connection.pos_to.door))
     for room in graph_rooms:
         for door in range(6):
             assert (room, door) in used_door
@@ -78,6 +94,6 @@ class Client:
         return response.results
 
     def guess(self, graph: Graph) -> bool:
-        check_graph(self.problem.size, Graph)
+        check_graph(self.problem.size, graph)
         response = post_guess(self.session, GuessRequest(id=ID, map=graph))
         return response.correct
