@@ -4,12 +4,16 @@ import random
 from collections import defaultdict
 from pprint import pprint
 from itertools import combinations
+import os
+
+BASE_URL = os.getenv("BASE_URL")
+ID = os.getenv("ID")
 
 
 def send_select(problem_name):
     res = requests.post(
-        "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com/select",
-        json={"id": "kensuke_imanishi@r.recruit.co.jp E-ObYlKstlzFqlUNaQbgrA", "problemName": problem_name}
+        f"{BASE_URL}/select",
+        json={"id": ID, "problemName": problem_name}
     )
     return res.json()
 
@@ -24,8 +28,8 @@ def create_plans():
 
 def send_explore(plans):
     res = requests.post(
-        "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com/explore",
-        json={"id": "kensuke_imanishi@r.recruit.co.jp E-ObYlKstlzFqlUNaQbgrA", "plans": plans}
+        f"{BASE_URL}/explore",
+        json={"id": ID, "plans": plans}
     )
     return res.json()
 
@@ -128,8 +132,8 @@ def create_guess(plans, explore_res):
 
 def send_guess(guess):
     res = requests.post(
-        "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com/guess",
-        json={"id": "kensuke_imanishi@r.recruit.co.jp E-ObYlKstlzFqlUNaQbgrA", "map": guess}
+        f"{BASE_URL}/guess",
+        json={"id": ID, "map": guess}
     )
     return res.json()
 
