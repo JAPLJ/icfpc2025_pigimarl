@@ -52,13 +52,13 @@ def check_plans(graph_size: int, plans: list[str]) -> None:
 def check_graph(graph_size: int, graph: Graph) -> None:
     graph_rooms = set(graph.rooms)
     used_door = set()
-    assert len(graph.rooms) == graph_size
-    assert graph.starting_room in graph_rooms
+    assert len(graph.rooms) == graph_size, "rooms の長さが不正です"
+    assert graph.starting_room in graph_rooms, "starting_room が rooms にありません"
     for connection in graph.connections:
-        assert connection.pos_from.room in graph_rooms
-        assert connection.pos_from.door in range(6)
-        assert connection.pos_to.room in graph_rooms
-        assert connection.pos_to.door in range(6)
+        assert connection.pos_from.room in graph_rooms, "connection.from.room が rooms にありません"
+        assert connection.pos_from.door in range(6), "door が [0, 5] の範囲外です"
+        assert connection.pos_to.room in graph_rooms, "connection.to.room が rooms にありません"
+        assert connection.pos_to.door in range(6), "door が [0, 5] の範囲外です"
         # 自己辺があるのでサボる
         # assert (connection.pos_from.room, connection.pos_from.door) not in used_door
         # assert (connection.pos_from.room, connection.pos_to.door) not in used_door
@@ -66,7 +66,7 @@ def check_graph(graph_size: int, graph: Graph) -> None:
         used_door.add((connection.pos_from.room, connection.pos_to.door))
     for room in graph_rooms:
         for door in range(6):
-            assert (room, door) in used_door
+            assert (room, door) in used_door, f"({room}, {door}) が connections にありません"
 
 
 class Problem:
