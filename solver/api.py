@@ -1,5 +1,6 @@
 import requests
-from api_type import SelectRequest, SelectResponse, ExploreRequest, ExploreResponse, GuessRequest, GuessResponse, Graph
+from api_type import SelectRequest, SelectResponse, ExploreRequest, ExploreResponse, GuessRequest, GuessResponse
+from type import Problem, Graph, check_plans, check_graph
 
 ID = "kensuke_imanishi@r.recruit.co.jp E-ObYlKstlzFqlUNaQbgrA"
 URL = "https://31pwr5t6ij.execute-api.eu-west-2.amazonaws.com"
@@ -42,40 +43,6 @@ def post_guess(session: requests.Session, request: GuessRequest) -> GuessRespons
         print(response["error"])
         exit()
     return GuessResponse(**response)
-
-
-def check_plans(graph_size: int, plans: list[str]) -> None:
-    for plan in plans:
-        assert len(plan) <= 18 * graph_size, "パスの長さが 18n を超えています"
-
-
-def check_graph(graph_size: int, graph: Graph) -> None:
-    graph_rooms = set(graph.rooms)
-    used_door = set()
-    assert len(graph.rooms) == graph_size, "rooms の長さが不正です"
-    assert graph.starting_room in graph_rooms, "starting_room が rooms にありません"
-    for connection in graph.connections:
-        assert connection.pos_from.room in graph_rooms, "connection.from.room が rooms にありません"
-        assert connection.pos_from.door in range(6), "door が [0, 5] の範囲外です"
-        assert connection.pos_to.room in graph_rooms, "connection.to.room が rooms にありません"
-        assert connection.pos_to.door in range(6), "door が [0, 5] の範囲外です"
-        # 自己辺があるのでサボる
-        # assert (connection.pos_from.room, connection.pos_from.door) not in used_door
-        # assert (connection.pos_from.room, connection.pos_to.door) not in used_door
-        used_door.add((connection.pos_from.room, connection.pos_from.door))
-        used_door.add((connection.pos_from.room, connection.pos_to.door))
-    for room in graph_rooms:
-        for door in range(6):
-            assert (room, door) in used_door, f"({room}, {door}) が connections にありません"
-
-
-class Problem:
-    name: str
-    size: int
-
-    def __init__(self, name: str, size: int):
-        self.name = name
-        self.size = size
 
 
 class Client:

@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from type import Graph
+
 
 class SelectRequest(BaseModel):
     id: str
@@ -18,22 +20,6 @@ class ExploreRequest(BaseModel):
 class ExploreResponse(BaseModel):
     results: list[list[int]]
     query_count: int = Field(alias="queryCount")
-
-
-class Position(BaseModel):
-    room: int
-    door: int
-
-
-class Connection(BaseModel):
-    pos_from: Position = Field(alias="from")
-    pos_to: Position = Field(alias="to")
-
-
-class Graph(BaseModel):
-    rooms: list[int]
-    starting_room: int = Field(alias="startingRoom")
-    connections: list[Connection]
 
 
 class GuessRequest(BaseModel):
