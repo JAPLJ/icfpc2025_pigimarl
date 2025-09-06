@@ -45,12 +45,14 @@ def post_guess(api_domain: str, session: requests.Session, request: GuessRequest
 class Client:
     api_domain: str
     token: str
+    debug: bool
     session: requests.Session
     problem: Problem
 
-    def __init__(self, api_domain: str, token: str):
+    def __init__(self, api_domain: str, token: str, debug: bool):
         self.api_domain = api_domain
         self.token = token
+        self.debug = debug
 
     def select(self, problem: Problem) -> None:
         self.session = requests.session()
@@ -60,6 +62,8 @@ class Client:
             self.session,
             SelectRequest(id=self.token, problemName=problem.name)
         )
+        if self.debug:
+            print(f"SELECT problem:{problem.name} (size:{problem.size})")
         assert response.problem_name == problem.name
 
     def explore(self, plans: list[str]) -> list[list[int]]:
@@ -69,6 +73,8 @@ class Client:
             self.session,
             ExploreRequest(id=self.token, plans=plans)
         )
+        if self.debug:
+            print(f"EXPLORE plan:{plans}, response:{response}")
         return response.results
 
     def guess(self, graph: Graph) -> bool:
@@ -78,4 +84,6 @@ class Client:
             self.session,
             GuessRequest(id=self.token, map=graph)
         )
+        if self.debug:
+            print(f"GUESS graph:{graph}, response:{response}")
         return response.correct
