@@ -12,6 +12,16 @@ class ProblemName(StrEnum):
     QUARTUS = "quartus"
     QUINTUS = "quintus"
 
+class ApiDomain(BaseModel):
+    local: str
+    production: str
+
+class Config(BaseModel):
+    api_domain: ApiDomain
+    problem_name: ProblemName
+    token: str
+    request_timeout: int
+
 def get_problem_size(problem_name: ProblemName) -> int:
     return {
         ProblemName.PROBATIO: 3,

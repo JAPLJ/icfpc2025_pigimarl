@@ -1,15 +1,16 @@
 import random
 from argparse import ArgumentParser
 
+import yaml
 from api_handler import ApiHandler
 from schema import (
+    Config,
     ExploreRequest,
     GuessRequest,
     ProblemName,
     SelectRequest,
     get_problem_size,
 )
-from yaml import FullLoader, load
 
 from solver import solve
 
@@ -23,25 +24,27 @@ def main():
     args = parser.parse_args()
 
     with open("config.yaml", "r") as f:
-        config = load(f, Loader=FullLoader)
+        config = Config.model_validate(yaml.load(f, Loader=yaml.FullLoader))
 
-    api_domain = config["api_domain"][args.env]
-    request_timeout = config["request_timeout"]
+    if args.env == "local":
+        api_domain = config.api_domain.local
+    else:
+        api_domain = config.api_domain.production
 
-    api_handler = ApiHandler(api_domain, request_timeout)
+    api_handler = ApiHandler(api_domain, config.request_timeout)
 
-    select_request = SelectRequest(id="dummy", problem_name=ProblemName(config["problem_name"]))
+    select_request = SelectRequest(id=config.token, problem_name=config.problem_name)
     select_response = api_handler.select(select_request)
     print(select_response)
 
-    n = get_problem_size(ProblemName(config["problem_name"]))
+    n = get_problem_size(config.problem_name)
     plans = [create_random_plan(n)]
-    explore_request = ExploreRequest(id="dummy", plans=plans)
+    explore_request = ExploreRequest(id=config.token, plans=plans)
     explore_response = api_handler.explore(explore_request)
     print(explore_response)
 
     map_data = solve(n, plans[0], explore_response.results[0])
-    guess_request = GuessRequest(id="dummy", map=map_data)
+    guess_request = GuessRequest(id=config.token, map=map_data)
     guess_response = api_handler.guess(guess_request)
     print(guess_response)
 
