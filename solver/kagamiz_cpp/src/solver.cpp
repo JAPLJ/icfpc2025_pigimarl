@@ -63,7 +63,13 @@ std::vector<Connection> create_connections(const std::vector<Room>& rooms) {
             }
             
             if (dst_door == -1) {
-                throw std::runtime_error("Logic Error");
+                // 自己ループのケース
+                if (i == dst) {
+                    dst_door = j;
+                }
+                else {
+                    throw std::runtime_error("Logic Error");
+                }
             }
             
             done.insert(std::make_pair(dst, dst_door));
