@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, fmt};
 
 use anyhow::Result;
 use reqwest::blocking::Client;
@@ -6,6 +6,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::problem::DEGREE;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum WalkStep {
+    Edge(usize),
+    Rewrite(usize),
+}
+
+impl fmt::Display for WalkStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WalkStep::Edge(e) => write!(f, "{}", e),
+            WalkStep::Rewrite(r) => write!(f, "[{}]", r),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExploreResponse {
@@ -75,6 +90,31 @@ impl Api {
     }
 
     pub fn explore(&self, plans: &Vec<Vec<usize>>) -> Result<ExploreResponse> {
+        let mut plans_str = vec![];
+        for plan in plans {
+            plans_str.push(
+                plan.iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>()
+                    .join(""),
+            );
+        }
+
+        let response: ExploreResponse = self
+            .client
+            .post(format!("{}/explore", self.base_url))
+            .header("Content-Type", "application/json")
+            .json(&json!({
+                "id": self.credentials,
+                "plans": plans_str,
+            }))
+            .send()?
+            .json()?;
+
+        Ok(response)
+    }
+
+    pub fn explore_full(&self, plans: &Vec<Vec<WalkStep>>) -> Result<ExploreResponse> {
         let mut plans_str = vec![];
         for plan in plans {
             plans_str.push(

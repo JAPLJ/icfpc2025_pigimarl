@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 
 mod graph;
-use graph::{DEGREE, Graph};
+use graph::{DEGREE, Graph, WalkStep};
+
+use crate::graph::LABELS;
 
 #[derive(Deserialize)]
 struct SelectRequest {
@@ -76,20 +78,30 @@ struct AppState {
 
 type SharedAppState = Arc<Mutex<AppState>>;
 
-const PROBLEM_NAME_MAP: &[(&str, usize)] = &[
-    ("probatio", 3),
-    ("primus", 6),
-    ("secundus", 12),
-    ("tertius", 18),
-    ("quartus", 24),
-    ("quintus", 30),
+const PROBLEM_NAME_MAP: &[(&str, usize, bool)] = &[
+    ("probatio", 3, false),
+    ("primus", 6, false),
+    ("secundus", 12, false),
+    ("tertius", 18, false),
+    ("quartus", 24, false),
+    ("quintus", 30, false),
+    ("aleph", 12, true),
+    ("beth", 24, true),
+    ("gimel", 36, true),
+    ("daleth", 48, true),
+    ("he", 60, true),
+    ("vau", 18, true),
+    ("zain", 36, true),
+    ("hhet", 54, true),
+    ("teth", 72, true),
+    ("iod", 90, true),
 ];
 
-fn get_n_from_problem_name(problem_name: &str) -> Option<usize> {
+fn get_n_from_problem_name(problem_name: &str) -> Option<(usize, bool)> {
     PROBLEM_NAME_MAP
         .iter()
-        .find(|(name, _)| *name == problem_name)
-        .map(|(_, n)| *n)
+        .find(|(name, _, _)| *name == problem_name)
+        .map(|(_, n, b)| (*n, *b))
 }
 
 // mapからGraphを作成
@@ -119,7 +131,12 @@ fn create_graph_from_map(map: &MapData) -> Option<Graph> {
         }
     }
 
-    Some(Graph::new(map.rooms.clone(), edges, map.starting_room))
+    Some(Graph::new(
+        map.rooms.clone(),
+        edges,
+        map.starting_room,
+        false,
+    ))
 }
 
 async fn select_handler(
@@ -127,10 +144,10 @@ async fn select_handler(
     Json(payload): Json<SelectRequest>,
 ) -> Result<Json<SelectResponse>, (StatusCode, String)> {
     // problemNameからnを取得
-    let n: usize = match get_n_from_problem_name(&payload.problem_name) {
+    let (n, is_full) = match get_n_from_problem_name(&payload.problem_name) {
         Some(val) => val,
         None => match payload.problem_name.parse() {
-            Ok(val) => val,
+            Ok(val) => (val, true),
             Err(_) => {
                 return Err((
                     StatusCode::BAD_REQUEST,
@@ -144,7 +161,7 @@ async fn select_handler(
     let mut app_state = state.lock().unwrap();
     app_state.query_count = 0;
     loop {
-        app_state.graph = Graph::random(n);
+        app_state.graph = Graph::random(n, is_full);
         if app_state.graph.connected() {
             break;
         }
@@ -165,30 +182,56 @@ async fn explore_handler(
     let mut app_state = state.lock().unwrap();
 
     let n = app_state.graph.node_count();
-    let max_length = n * 18;
+    let max_length = if app_state.graph.is_full {
+        n * 6
+    } else {
+        n * 18
+    };
 
     let mut results = Vec::new();
 
-    let mut all_edge_ids: Vec<Vec<usize>> = Vec::new();
+    let mut all_walk_steps: Vec<Vec<WalkStep>> = Vec::new();
 
     for plan in &payload.plans {
-        if plan.len() > max_length {
+        let mut walk_steps = vec![];
+        let chars: Vec<char> = plan.chars().collect();
+        let mut i = 0;
+        let mut traversed_edges = 0;
+        while i < chars.len() {
+            if chars[i] == '[' {
+                if i + 2 < chars.len() && chars[i + 2] == ']' {
+                    let label_char = chars[i + 1];
+                    if let Some(label) = label_char.to_digit(10) {
+                        if label < LABELS as u32 {
+                            walk_steps.push(WalkStep::Rewrite(label as usize));
+                            i += 3;
+                            continue;
+                        }
+                    }
+                }
+            } else if chars[i].is_ascii_digit() {
+                let edge_char = chars[i];
+                if let Some(edge) = edge_char.to_digit(10) {
+                    if edge < DEGREE as u32 {
+                        walk_steps.push(WalkStep::Edge(edge as usize));
+                        traversed_edges += 1;
+                        i += 1;
+                        continue;
+                    }
+                }
+            }
+            return Err((StatusCode::BAD_REQUEST, format!("invalid plan: {}", plan)));
+        }
+
+        if traversed_edges > max_length {
             return Err((StatusCode::BAD_REQUEST, format!("too long plan: {}", plan)));
         }
-        let edge_ids: Result<Vec<usize>, _> = plan
-            .chars()
-            .map(|c| c.to_digit(10).map(|d| d as usize).ok_or(()))
-            .collect();
-        match edge_ids {
-            Ok(ids) => all_edge_ids.push(ids),
-            Err(_) => {
-                return Err((StatusCode::BAD_REQUEST, format!("invalid plan: {}", plan)));
-            }
-        }
+
+        all_walk_steps.push(walk_steps);
     }
 
-    for edge_ids in &all_edge_ids {
-        let walk_result = app_state.graph.walk(edge_ids.clone());
+    for walk_steps in &all_walk_steps {
+        let walk_result = app_state.graph.walk(walk_steps.clone());
         results.push(walk_result);
     }
 
@@ -238,7 +281,7 @@ fn app_with_state(state: SharedAppState) -> Router {
 async fn main() {
     // 初期状態（頂点数1のグラフとquery_count=0で初期化）
     let state = Arc::new(Mutex::new(AppState {
-        graph: Graph::random(1),
+        graph: Graph::random(1, false),
         query_count: 0,
     }));
     let app = app_with_state(state);

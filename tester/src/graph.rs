@@ -6,23 +6,36 @@ use rand_pcg::Pcg64Mcg;
 pub const LABELS: usize = 4;
 pub const DEGREE: usize = 6;
 
+#[derive(Debug, Clone, Copy)]
+pub enum WalkStep {
+    Edge(usize),
+    Rewrite(usize),
+}
+
 #[derive(Debug, Clone)]
 pub struct Graph {
     labels: Vec<usize>,
     edges: Vec<Vec<usize>>,
     start_node: usize,
+    pub is_full: bool,
 }
 
 impl Graph {
-    pub fn new(labels: Vec<usize>, edges: Vec<Vec<usize>>, start_node: usize) -> Self {
+    pub fn new(
+        labels: Vec<usize>,
+        edges: Vec<Vec<usize>>,
+        start_node: usize,
+        is_full: bool,
+    ) -> Self {
         Self {
             labels,
             edges,
             start_node,
+            is_full,
         }
     }
 
-    pub fn random(n: usize) -> Self {
+    pub fn random(n: usize, is_full: bool) -> Self {
         let mut rng = Pcg64Mcg::from_os_rng();
 
         // labelsを初期化（0,1,2,3を均等に割り当ててシャッフル）
@@ -44,7 +57,7 @@ impl Graph {
             edges[i].shuffle(&mut rng);
         }
 
-        Self::new(labels, edges, rng.random_range(0..n))
+        Self::new(labels, edges, rng.random_range(0..n), is_full)
     }
 
     pub fn connected(&self) -> bool {
@@ -68,15 +81,47 @@ impl Graph {
         self.labels.len()
     }
 
-    pub fn walk(&self, edge_ids: Vec<usize>) -> Vec<usize> {
+    pub fn walk(&self, walk: Vec<WalkStep>) -> Vec<usize> {
         let mut result = Vec::new();
+        let mut current_labels = self.labels.clone();
         let mut current_node = self.start_node;
-        result.push(self.labels[current_node]);
-        for edge_id in edge_ids {
-            let next_node = self.edges[current_node][edge_id];
-            result.push(self.labels[next_node]);
-            current_node = next_node;
+        result.push(current_labels[current_node]);
+        for walk_step in walk {
+            match walk_step {
+                WalkStep::Edge(edge_id) => {
+                    let next_node = self.edges[current_node][edge_id];
+                    result.push(current_labels[next_node]);
+                    current_node = next_node;
+                }
+                WalkStep::Rewrite(label) => {
+                    current_labels[current_node] = label;
+                    result.push(label);
+                }
+            }
         }
+        result
+    }
+
+    pub fn bisimulation_randomized(&self, other: &Graph) -> bool {
+        let mut rng = Pcg64Mcg::from_os_rng();
+        let mut result = true;
+
+        for _ in 0..100 {
+            let mut walk = vec![];
+            let rewrite_probability = rng.random_range(0f64..1.0f64);
+            for _ in 0..10000 {
+                if rng.random_range(0f64..1.0f64) < rewrite_probability {
+                    walk.push(WalkStep::Rewrite(rng.random_range(0..LABELS)));
+                } else {
+                    walk.push(WalkStep::Edge(rng.random_range(0..DEGREE)));
+                }
+            }
+            if self.walk(walk.clone()) != other.walk(walk.clone()) {
+                result = false;
+                break;
+            }
+        }
+
         result
     }
 
@@ -84,6 +129,10 @@ impl Graph {
         let n = self.labels.len();
         if n != other.labels.len() {
             return false;
+        }
+
+        if self.is_full {
+            return self.bisimulation_randomized(other);
         }
 
         let mut group_id = vec![0; n * 2];
@@ -152,6 +201,7 @@ mod tests {
                 vec![2, 1, 1, 0, 2, 0],
             ],
             1,
+            false,
         );
 
         let graph2 = Graph::new(
@@ -162,6 +212,7 @@ mod tests {
                 vec![2, 2, 2, 1, 1, 2],
             ],
             2,
+            false,
         );
 
         assert!(
