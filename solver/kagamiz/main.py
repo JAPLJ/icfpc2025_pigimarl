@@ -21,6 +21,9 @@ def create_random_plan(n: int) -> str:
 def main():
     parser = ArgumentParser()
     parser.add_argument("--env", type=str, default="local", choices=["local", "production"])
+    parser.add_argument("--problem", type=str, required=True, 
+                       choices=["probatio", "primus", "secundus", "tertius", "quartus", "quintus"],
+                       help="Problem name to solve")
     args = parser.parse_args()
 
     with open("config.yaml", "r") as f:
@@ -33,11 +36,14 @@ def main():
 
     api_handler = ApiHandler(api_domain, config.request_timeout)
 
-    select_request = SelectRequest(id=config.token, problem_name=config.problem_name)
+    # Convert string to ProblemName enum
+    problem_name = ProblemName(args.problem)
+    
+    select_request = SelectRequest(id=config.token, problem_name=problem_name)
     select_response = api_handler.select(select_request)
     print(select_response)
 
-    n = get_problem_size(config.problem_name)
+    n = get_problem_size(problem_name)
     plans = [create_random_plan(n)]
     explore_request = ExploreRequest(id=config.token, plans=plans)
     explore_response = api_handler.explore(explore_request)

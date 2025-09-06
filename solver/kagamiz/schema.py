@@ -18,7 +18,6 @@ class ApiDomain(BaseModel):
 
 class Config(BaseModel):
     api_domain: ApiDomain
-    problem_name: ProblemName
     token: str
     request_timeout: int
 
