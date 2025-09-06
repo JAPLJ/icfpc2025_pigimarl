@@ -12,6 +12,16 @@ class ProblemName(StrEnum):
     QUARTUS = "quartus"
     QUINTUS = "quintus"
 
+def get_problem_size(problem_name: ProblemName) -> int:
+    return {
+        ProblemName.PROBATIO: 3,
+        ProblemName.PRIMUS: 6,
+        ProblemName.SECUNDUS: 12,
+        ProblemName.TERTIUS: 18,
+        ProblemName.QUARTUS: 24,
+        ProblemName.QUINTUS: 30,
+    }[problem_name]
+
 class SelectRequest(BaseModel):
     id: str
     problem_name: ProblemName = Field(..., serialization_alias="problemName")
