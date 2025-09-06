@@ -1,14 +1,22 @@
 import json
 import requests
 import random
-from collections import defaultdict
+from collections import defaultdict, Counter
 from pprint import pprint
 from itertools import combinations
 import os
+import re
+from union_find import UnionFindDict
 
 BASE_URL = os.getenv("BASE_URL")
 ID = os.getenv("ID")
 
+N = 6
+# N = 30
+
+seed = 1
+
+magic_walk = "012345"
 
 def send_select(problem_name):
     res = requests.post(
@@ -20,9 +28,14 @@ def send_select(problem_name):
 
 def create_plans():
     res = []
-    random.seed(0)
-    random_walk = "".join(random.choices("012345", k=54))
-    res.append(random_walk)
+    random.seed(seed)
+    # random_walk = "".join(random.choices("012345", k=18 * N))
+    walk = ""
+    while len(walk) < 18 * N:
+        ll = random.randrange(5)
+        walk += "".join(random.choices("012345", k=ll)) + magic_walk
+    walk = walk[:18 * N]
+    res.append(walk)
 
     return res
 
@@ -98,37 +111,106 @@ def construct_connections(map_with_door, room_list):
 
 def create_guess(plans, explore_res):
     # Create a candidate map based on explore results
-    # This is a simple example - you'll need to implement actual map reconstruction
-    rooms = explore_res["results"][0]
+    labels = explore_res["results"][0]
+    rooms = [-1 for i in range(len(labels))]
     map_ = defaultdict(dict)
 
-    # room0 --door0-> room1 --door1-> room2 --door2-> room3 --door3-> room4
-    for i in range(len(plans[0])):
-        door = plans[0][i]
-        room_from = rooms[i]
-        room_to = rooms[i + 1]
-        map_[room_from][door] = room_to
+    suffixes = {0: "a", 1: "a", 2: "a", 3: "a"}
+    uf = UnionFindDict([])
 
-    pprint(map_)
-    map_, map_with_door = complete_map(map_)
-    pprint(map_)
-    pprint(map_with_door)
+    for pattern_len in range(len(magic_walk), 3, -1):
+        # magic_walk をしたときに同じラベルが出る => その部分は同じ部屋
+        memo = {}
+        pattern = re.compile(magic_walk[:pattern_len])
+        itr = pattern.finditer(plans[0])
+        for match in itr:
+            start = match.start()
+            end = match.end()
+            label_seq = "".join(map(str, labels[start:end + 1]))
+            same_seq_start = memo.get(label_seq, -1)
+            # そのラベルが出てくる初めの部分
+            if same_seq_start == -1:
+                for i in range(start, end + 1):
+                    if rooms[i] == -1:
+                        rooms[i] = str(labels[i]) + suffixes[labels[i]]
+                        uf.add(rooms[i])
+                        suffixes[labels[i]] = chr(ord(suffixes[labels[i]]) + 1)
+                memo[label_seq] = start
+            # 同じラベルが出る部分がある
+            else:
+                for i in range(start, end + 1):
+                    rooms[i] = rooms[same_seq_start + i - start]
+                    uf.add(rooms[i])
 
-    # decide starting room
-    starting_room = None
-    for (room, next_rooms) in map_with_door.items():
-        if next_rooms[plans[0][0]][0] == rooms[0]:
-            starting_room = room
-            break
+        # map_ を作成
+        for i in range(len(plans[0])):
+            door = plans[0][i]
+            room_from = rooms[i]
+            room_to = rooms[i + 1]
+            if room_from != -1 and room_to != -1:
+                room_to_by_map = map_[room_from].get(door, "_")
+                # map_ に記載がない
+                if room_to_by_map == "_":
+                    map_[room_from][door] = room_to
+                # すでに記述がある => その2つの部屋は同じ部屋
+                elif room_to_by_map != room_to:
+                    assert room_to_by_map[0] == room_to[0], f"different label. room_to_by_map: {room_to_by_map}, room_to: {room_to}"
+                    uf.union(room_to, room_to_by_map)
+        pprint(map_)
+
+        # uf を使って map_, rooms を更新
+        new_map = defaultdict(dict)
+        for (room, next_rooms) in map_.items():
+            for (door, room_to) in next_rooms.items():
+                new_map[uf.find(room)][door] = uf.find(room_to)
+        map_ = new_map
+        for i, room in enumerate(rooms):
+            rooms[i] = uf.find(room)
+
+        for room, label in zip(rooms, labels):
+            print(f"{room}|{label}|")
+        break
+
+    # # room0 --door0-> room1 --door1-> room2 --door2-> room3 --door3-> room4
+    # rdr_counter = Counter()
+    # rd_counter = Counter()
+    # for i in range(len(plans[0])):
+    #     door = plans[0][i]
+    #     room_from = rooms[i]
+    #     room_to = rooms[i + 1]
+    #     rdr_counter[(room_from, door, room_to)] += 1
+    #     rd_counter[(room_from, door)] += 1
+    # pprint(rdr_counter)
+    # print(len(rdr_counter))
+    # for (room_from, door, room_to), count in rdr_counter.items():
+    #     print(f"{room_from} -- {door} -> {room_to}: {count:>2}; {count / rd_counter[(room_from, door)]}")
+    # # mermaid graph
+    # print("```mermaid")
+    # print("graph TD")
+    # for (room_from, door, room_to), count in rdr_counter.items():
+    #     print(f"{room_from} --{door},{count / rd_counter[(room_from, door)]}--> {room_to};")
+    # print("```")
+
+    # pprint(map_)
+    # map_, map_with_door = complete_map(map_)
+    # pprint(map_)
+    # pprint(map_with_door)
+
+    # # decide starting room
+    # starting_room = None
+    # for (room, next_rooms) in map_with_door.items():
+    #     if next_rooms[plans[0][0]][0] == rooms[0]:
+    #         starting_room = room
+    #         break
 
 
-    room_list = list(map_.keys())
-    map_data = {
-        "rooms": room_list,
-        "startingRoom": room_list.index(starting_room),
-        "connections": construct_connections(map_with_door, room_list)     # List of connections between rooms
-    }
-    return map_data
+    # room_list = list(map_.keys())
+    # map_data = {
+    #     "rooms": room_list,
+    #     "startingRoom": room_list.index(starting_room),
+    #     "connections": construct_connections(map_with_door, room_list)     # List of connections between rooms
+    # }
+    # return map_data
 
 def send_guess(guess):
     res = requests.post(
@@ -138,7 +220,7 @@ def send_guess(guess):
     return res.json()
 
 def main():
-    send_select("probatio")
+    # send_select(f"{N}")
 
     plans = create_plans()
     print(f"'{json.dumps(plans)}'")
@@ -148,9 +230,9 @@ def main():
     print(f"'{json.dumps(explore_res)}'")
 
     guess = create_guess(plans, explore_res)
-    print(f"'{json.dumps(guess)}'")
-    guessed = send_guess(guess)
-    print(f"'{json.dumps(guessed)}'")
+    # print(f"'{json.dumps(guess)}'")
+    # guessed = send_guess(guess)
+    # print(f"'{json.dumps(guessed)}'")
 
 if __name__ == "__main__":
     main()
