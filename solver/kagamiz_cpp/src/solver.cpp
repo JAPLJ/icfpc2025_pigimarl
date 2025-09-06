@@ -9,35 +9,40 @@
 namespace kagamiz {
 
 std::string serialize_state(const State& state) {
-    nlohmann::json j;
-    j["rooms"] = nlohmann::json::array();
-    for (const auto& room : state.rooms) {
-        nlohmann::json room_json;
-        room_json["label"] = room.label;
-        room_json["doors"] = room.doors;
-        j["rooms"].push_back(room_json);
-    }
-    j["idx"] = state.idx;
-    j["current_room_idx"] = state.current_room_idx;
-    
-    std::string json_str = j.dump();
-    
-    // Calculate SHA256 hash using EVP interface
+    // Calculate SHA256 hash directly from State data
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     const EVP_MD* md = EVP_sha256();
     unsigned char hash[EVP_MAX_MD_SIZE];
     unsigned int hash_len;
     
     EVP_DigestInit_ex(ctx, md, nullptr);
-    EVP_DigestUpdate(ctx, json_str.c_str(), json_str.length());
+    
+    // Hash rooms data
+    for (const auto& room : state.rooms) {
+        // Hash room label
+        EVP_DigestUpdate(ctx, &room.label, sizeof(room.label));
+        // Hash doors array
+        EVP_DigestUpdate(ctx, room.doors.data(), room.doors.size() * sizeof(int));
+    }
+    
+    // Hash idx and current_room_idx
+    EVP_DigestUpdate(ctx, &state.idx, sizeof(state.idx));
+    EVP_DigestUpdate(ctx, &state.current_room_idx, sizeof(state.current_room_idx));
+    
     EVP_DigestFinal_ex(ctx, hash, &hash_len);
     EVP_MD_CTX_free(ctx);
     
-    std::stringstream ss;
+    // Pre-allocate result string and build hex string directly
+    std::string result;
+    result.reserve(hash_len * 2); // Each byte becomes 2 hex chars
+    
+    // Use lookup table for hex conversion (faster than stringstream)
+    static const char hex_chars[] = "0123456789abcdef";
     for (unsigned int i = 0; i < hash_len; i++) {
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)hash[i];
+        result += hex_chars[(hash[i] >> 4) & 0xF];
+        result += hex_chars[hash[i] & 0xF];
     }
-    return ss.str();
+    return result;
 }
 
 std::vector<Connection> create_connections(const std::vector<Room>& rooms) {
@@ -111,6 +116,16 @@ std::shared_ptr<MapData> dfs(
     const State& state, 
     std::unordered_map<std::string, std::shared_ptr<MapData>>& memo
 ) {
+    static int max_idx = 0;
+    static int memo_size_checkpoint = 0;
+    if (state.idx > max_idx) {
+        max_idx = state.idx;
+        std::cout << "max_idx: " << max_idx << std::endl;
+    }
+    if (memo.size() > memo_size_checkpoint) {
+        std::cout << "memo_size_checkpoint: " << memo_size_checkpoint << std::endl;
+        memo_size_checkpoint += 100000;
+    }
     std::string serialized_state = serialize_state(state);
 
     std::vector<int> room_in_degree(n, 0);
