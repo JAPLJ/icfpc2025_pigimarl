@@ -133,7 +133,7 @@ impl Api {
                                 break;
                             }
                         }
-                        vi.unwrap()
+                        vi.ok_or(anyhow::anyhow!("vi not found"))?
                     };
 
                     paired[u][ui] = true;
