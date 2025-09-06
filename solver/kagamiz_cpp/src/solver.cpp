@@ -2,10 +2,10 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
-#include <algorithm>
 #include <stdexcept>
 #include <openssl/evp.h>
-
+#include <set>
+#include <random>
 namespace kagamiz {
 
 std::string serialize_state(const State& state) {
@@ -40,30 +40,23 @@ std::string serialize_state(const State& state) {
     return ss.str();
 }
 
-// Custom hash function for std::pair<int, int>
-struct PairHash {
-    std::size_t operator()(const std::pair<int, int>& p) const {
-        return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 1);
-    }
-};
-
 std::vector<Connection> create_connections(const std::vector<Room>& rooms) {
     int n = rooms.size();
-    std::unordered_map<std::pair<int, int>, bool, PairHash> done;
+    std::set<std::pair<int, int>> done;
     std::vector<Connection> connections;
     
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < 6; j++) {
             auto key = std::make_pair(i, j);
-            if (done[key]) {
+            if (done.contains(key)) {
                 continue;
             }
-            done[key] = true;
+            done.insert(key);
             
             int dst = rooms[i].doors[j];
             int dst_door = -1;
             for (int k = 0; k < 6; k++) {
-                if (rooms[dst].doors[k] == i) {
+                if (!done.contains(std::make_pair(dst, k)) && rooms[dst].doors[k] == i) {
                     dst_door = k;
                     break;
                 }
@@ -73,14 +66,13 @@ std::vector<Connection> create_connections(const std::vector<Room>& rooms) {
                 throw std::runtime_error("Logic Error");
             }
             
-            done[std::make_pair(dst, dst_door)] = true;
+            done.insert(std::make_pair(dst, dst_door));
             connections.push_back(Connection{
                 .src = RoomDoor{.room = i, .door = j},
                 .dst = RoomDoor{.room = dst, .door = dst_door}
             });
         }
     }
-    
     return connections;
 }
 
@@ -114,23 +106,35 @@ std::shared_ptr<MapData> dfs(
     std::unordered_map<std::string, std::shared_ptr<MapData>>& memo
 ) {
     std::string serialized_state = serialize_state(state);
+
+    std::vector<int> room_in_degree(n, 0);
+    for (const auto& room : state.rooms) {
+        for (const auto& door : room.doors) {
+            if (door != -1) {
+                room_in_degree[door]++;
+            }
+        }
+    }
+
+    // 扉は 6 個しかないので、入次数が 6 を超える部屋は存在しない
+    for (const auto& degree : room_in_degree) {
+        if (degree > 6) {
+            memo[serialized_state] = nullptr;
+            return nullptr;
+        }
+    }
     
     if (state.idx == static_cast<int>(doors.length())) {
-        std::cout << "dfs completed(rooms=" << format_rooms(state.rooms) << ")" << std::endl;
+        auto rooms = state.rooms;
+        std::cout << "dfs completed(rooms=" << format_rooms(rooms) << ")" << std::endl;
         
         std::unordered_map<int, int> label_cnt;
-        for (const auto& room : state.rooms) {
+        for (const auto& room : rooms) {
             if (room.label == -1) {
                 memo[serialized_state] = nullptr;
                 return nullptr;
             }
             label_cnt[room.label]++;
-            for (int door : room.doors) {
-                if (door == -1) {
-                    memo[serialized_state] = nullptr;
-                    return nullptr;
-                }
-            }
         }
         
         // Check if labels are evenly distributed
@@ -140,16 +144,83 @@ std::shared_ptr<MapData> dfs(
                 return nullptr;
             }
         }
-        
+        // 行き先が決まっているドアの情報から逆引きのための情報を作成
+        std::vector<std::vector<int>> reverse_lookup(n);
+        for (int i = 0; i < n; i++) {
+            const auto& room = rooms[i];
+            for (const auto& door : room.doors) {
+                if (door != -1) {
+                    reverse_lookup[door].push_back(i);
+                }
+            }
+        }
+        // 逆引き情報から行き先が決まっていないドアの情報の補完を試みる
+        for (int i = 0; i < n; i++) {
+            auto& room = rooms[i];
+
+            bool used[6] = {false, false, false, false, false, false};
+            for (const auto& expected_room: reverse_lookup[i]) {
+                bool matching_door_found = false;
+                for (int door_idx = 0; door_idx < 6; door_idx++) {
+                    if (used[door_idx]) {
+                        continue;
+                    }
+                    if (room.doors[door_idx] == expected_room) {
+                        used[door_idx] = true;
+                        matching_door_found = true;
+                        break;
+                    }
+                }
+                if (matching_door_found) {
+                    continue;
+                }
+                for (int door_idx = 0; door_idx < 6; door_idx++) {
+                    if (used[door_idx]) {
+                        continue;
+                    }
+                    if (room.doors[door_idx] == -1) {
+                        room.doors[door_idx] = expected_room;
+                        used[door_idx] = true;
+                        matching_door_found = true;
+                        room_in_degree[expected_room]++;
+                        if (room_in_degree[expected_room] > 6) {
+                            memo[serialized_state] = nullptr;
+                            return nullptr;
+                        }
+                        break;
+                    }
+                }
+                if (!matching_door_found) {
+                    memo[serialized_state] = nullptr;
+                    return nullptr;
+                }
+            }
+        }
+        // まだ行き先が決まっていないドアを列挙 (部屋番号, ドア番号)
+        std::vector<int> undetermined_rooms;
+        std::vector<std::pair<int, int>> undetermined_doors;
+        for (int i = 0; i < n; i++) {
+            for (int door_idx = 0; door_idx < 6; door_idx++) {
+                if (rooms[i].doors[door_idx] == -1) {
+                    undetermined_rooms.push_back(i);
+                    undetermined_doors.push_back(std::make_pair(i, door_idx));
+                }
+            }
+        }
+        std::shuffle(undetermined_rooms.begin(), undetermined_rooms.end(), std::mt19937(std::random_device()()));
+        for (int i = 0; i < undetermined_rooms.size(); i++) {
+            const auto& [room_idx, door_idx] = undetermined_doors[i];
+            rooms[room_idx].doors[door_idx] = undetermined_rooms[i];
+            room_in_degree[undetermined_rooms[i]]++;
+        }
         std::vector<int> room_labels;
-        for (const auto& room : state.rooms) {
+        for (const auto& room : rooms) {
             room_labels.push_back(room.label);
         }
-        
         auto result = std::make_shared<MapData>(MapData{
             .rooms = room_labels,
             .starting_room = 0,
-            .connections = create_connections(state.rooms)
+            .connections = create_connections(rooms)
         });
         
         memo[serialized_state] = result;
