@@ -2,7 +2,6 @@
 
 #include <string>
 #include <vector>
-#include <unordered_map>
 #include "nlohmann_json.hpp"
 
 namespace kagamiz {
@@ -27,8 +26,9 @@ struct Config {
     ApiDomain api_domain;
     std::string token;
     int request_timeout;
+    std::string solver_type;
     
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Config, api_domain, token, request_timeout)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Config, api_domain, token, request_timeout, solver_type)
 };
 
 int get_problem_size(ProblemName problem_name);

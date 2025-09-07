@@ -1,11 +1,11 @@
 #include <iostream>
-#include <fstream>
 #include <random>
 #include <string>
 #include <yaml-cpp/yaml.h>
 #include <cxxopts.hpp>
 #include "schema.hpp"
 #include "solver.hpp"
+#include "solver2.hpp"
 #include "api_handler.hpp"
 
 namespace kagamiz {
@@ -31,6 +31,7 @@ Config load_config(const std::string& filename) {
     cfg.api_domain.production = config["api_domain"]["production"].as<std::string>();
     cfg.token = config["token"].as<std::string>();
     cfg.request_timeout = config["request_timeout"].as<int>();
+    cfg.solver_type = config["solver_type"].as<std::string>();
     
     return cfg;
 }
@@ -110,7 +111,16 @@ int main(int argc, char* argv[]) {
         kagamiz::ExploreResponse explore_response = api_handler.explore(explore_request);
         std::cout << "Explore response: " << nlohmann::json(explore_response).dump() << std::endl;
         
-        kagamiz::MapData map_data = kagamiz::solve2(n, plans[0], explore_response.results[0]);
+        kagamiz::MapData map_data;
+        if (config.solver_type == "dfs") {
+            map_data = kagamiz::solve(n, plans[0], explore_response.results[0]);
+        } else if (config.solver_type == "genetic") {
+            map_data = kagamiz::solve2(n, plans[0], explore_response.results[0]);
+        } else {
+            std::cerr << "エラー: 無効なソルバタイプです: " << config.solver_type << std::endl;
+            std::cout << "ソルバタイプの選択肢: dfs, genetic" << std::endl;
+            return 1;
+        }
         kagamiz::GuessRequest guess_request{
             .id = config.token,
             .map = map_data

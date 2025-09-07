@@ -66,6 +66,8 @@ set(SOURCES
     src/main.cpp
     src/schema.cpp
     src/solver.cpp
+    src/solver2.cpp
+    src/helper.cpp
     src/api_handler.cpp
 )
 
@@ -73,6 +75,8 @@ set(SOURCES
 set(HEADERS
     src/schema.hpp
     src/solver.hpp
+    src/solver2.hpp
+    src/helper.hpp
     src/api_handler.hpp
     src/nlohmann_json.hpp
 )
