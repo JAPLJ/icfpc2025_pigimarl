@@ -21,7 +21,7 @@ struct Feedback {
     std::set<std::pair<int, int>> right_doors;
 };
 
-State2 create_random_state2(int n);
+State2 create_random_state2(int n, const std::string& doors, const std::vector<int>& labels);
 Feedback calculate_score(const State2& state, const std::string& doors, const std::vector<int>& labels);
 State2 mutate(const State2& state, const std::vector<int>& labels, const std::string& doors, const std::vector<int>& mistakes, const std::set<std::pair<int, int>>& right_doors);
 std::string format_right_doors(const std::set<std::pair<int, int>>& right_doors);

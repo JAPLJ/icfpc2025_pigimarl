@@ -7,18 +7,25 @@
 namespace kagamiz {
 
 
-State2 create_random_state2(int n) {
+State2 create_random_state2(int n, const std::string& doors, const std::vector<int>& labels) {
     std::vector<Room> rooms;
     for (int i = 0; i < n; i++) {
         rooms.emplace_back(-1, std::vector<int>(6, -1));
     }
+    std::vector<int> start_room_idx_candidates;
+    std::vector<std::vector<int>> label_to_rooms(4);
     for (int i = 0; i < n; i++) {
         rooms[i].label = i % 4;
+        if (rooms[i].label == labels[0]) {
+            start_room_idx_candidates.push_back(i);
+        }
+        label_to_rooms[rooms[i].label].push_back(i);
     }
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(0, n - 1);
-    int start_room_idx = dis(gen);
+
+    std::mt19937 gen(std::random_device{}());
+    std::uniform_int_distribution<> dis(0, start_room_idx_candidates.size() - 1);
+    int start_room_idx = start_room_idx_candidates[dis(gen)];
+
     std::vector<std::vector<std::pair<int, int>>> pair_doors(n, std::vector<std::pair<int, int>>(6, std::make_pair(-1, -1)));
     std::vector<std::pair<int, int>> room_and_door;
     std::vector<bool> used;
@@ -47,6 +54,28 @@ State2 create_random_state2(int n) {
             used[j] = true;
             break;
         }
+    }
+
+    // それっぽくなるようにつなぎ直していく
+    int current_room_idx = start_room_idx;
+    for (int i = 0; i < doors.length(); i++) {
+        int door_idx = doors[i] - '0';
+        std::uniform_int_distribution<> dis(0, label_to_rooms[labels[i + 1]].size() - 1);
+        int next_room_idx = label_to_rooms[labels[i + 1]][dis(gen)];
+        std::uniform_int_distribution<> dis2(0, 5);
+        int next_door_idx = dis2(gen);
+
+        auto [room_idx3, door_idx3] = pair_doors[current_room_idx][door_idx];
+        auto [room_idx4, door_idx4] = pair_doors[next_room_idx][next_door_idx];
+        rooms[current_room_idx].doors[door_idx] = next_room_idx;
+        rooms[next_room_idx].doors[next_door_idx] = current_room_idx;
+        rooms[room_idx3].doors[door_idx3] = room_idx4;
+        rooms[room_idx4].doors[door_idx4] = room_idx3;
+        pair_doors[current_room_idx][door_idx] = std::make_pair(next_room_idx, next_door_idx);
+        pair_doors[next_room_idx][next_door_idx] = std::make_pair(current_room_idx, door_idx);
+        pair_doors[room_idx3][door_idx3] = std::make_pair(room_idx4, door_idx4);
+        pair_doors[room_idx4][door_idx4] = std::make_pair(room_idx3, door_idx3);
+        current_room_idx = next_room_idx;
     }
     return State2(rooms, start_room_idx, pair_doors);
 }
@@ -81,11 +110,11 @@ Feedback calculate_score(const State2& state, const std::string& doors, const st
         }
         current_room_idx = state.rooms[current_room_idx].doors[door_idx];
     }
-    /*
+
     for (const auto& [room_idx, door_idx] : wrong_doors) {
         right_doors.erase(std::make_pair(room_idx, door_idx));
     }
-    s*/
+
     score += 0.1 * (right_doors.size());
     return Feedback{
         .score = score,
@@ -99,18 +128,13 @@ State2 mutate(const State2& state, const std::vector<int>& labels, const std::st
     std::mt19937 gen(std::random_device{}());
     std::uniform_int_distribution<> dis(0, 999);
     int p = dis(gen);
-    // 1% の確率で完全なる突然変異を起こす
-    if (p < 10) {
-        return create_random_state2(state.rooms.size());
-    }
-    // 9% の確率でランダムに部屋を繋ぎ変え
-    else if (p < 100) {
+    // 10% の確率でランダムに部屋を繋ぎ変え
+    if (p < 100) {
         std::vector<std::pair<int, int>> room_and_door_candidates;
 
-        int pp = dis(gen);
         for (int i = 0; i < state.rooms.size(); i++) {
             for (int j = 0; j < 6; j++) {
-                if (!right_doors.contains(std::make_pair(i, j)) || pp < 500) {
+                if (!right_doors.contains(std::make_pair(i, j))) {
                     room_and_door_candidates.push_back(std::make_pair(i, j));
                 }
             }
@@ -136,102 +160,56 @@ State2 mutate(const State2& state, const std::vector<int>& labels, const std::st
         new_state.rooms[room_idx4].doors[door_idx4] = room_idx3;
         return new_state;
     }
-    // 80% の確率で間違えたドアを修正
-    else if (p < 900) {
-        std::uniform_int_distribution<> dis_mistake(0, mistakes.size() - 1);
-        int mistake_idx = dis_mistake(gen);
-        std::vector<int> room_transition_history;
-        int current_room_idx = state.start_room_idx;
-        room_transition_history.push_back(current_room_idx);
-        for (int i = 0; i < doors.length(); i++) {
-            int door_idx = doors[i] - '0';
-            current_room_idx = state.rooms[current_room_idx].doors[door_idx];
-            room_transition_history.push_back(current_room_idx);
-        }
-        // i 回目のドア通過時の行き先が間違っていた。正しいラベルは labels[i + 1]。
-        int mistake_door_idx = mistakes[mistake_idx];
-        std::vector<std::pair<int, int>> new_room_and_door_candidates;
-
-        int pp = dis(gen);
-        for (int i = 0; i < state.rooms.size(); i++) {
-            if (state.rooms[i].label == labels[mistake_door_idx + 1]) {
-                for (int j = 0; j < 6; j++) {
-                    if (!right_doors.contains(std::make_pair(i, j)) || pp < 500) {
-                        new_room_and_door_candidates.push_back(std::make_pair(i, j));
-                    }
-                }
-            }
-        }
-        if (new_room_and_door_candidates.size() == 0) {
-            return state;
-        }
-        std::uniform_int_distribution<> dis_new_room_and_door(0, new_room_and_door_candidates.size() - 1);
-
-        int room_idx = room_transition_history[mistake_idx + 1];
-        int door_idx = doors[mistake_idx] - '0';
-        const auto& [room_idx2, door_idx2] = new_room_and_door_candidates[dis_new_room_and_door(gen)];
-        const auto& [room_idx3, door_idx3] = state.pair_doors[room_idx][door_idx];
-        const auto& [room_idx4, door_idx4] = state.pair_doors[room_idx2][door_idx2];
+    // 85% の確率で間違えたドアを修正
+    else if (p < 950) {
         auto new_state = state;
-        // 1, 2 と 3, 4 を pair にするように書き換える。
-        new_state.pair_doors[room_idx][door_idx] = std::make_pair(room_idx2, door_idx2);
-        new_state.pair_doors[room_idx2][door_idx2] = std::make_pair(room_idx, door_idx);
-        new_state.pair_doors[room_idx3][door_idx3] = std::make_pair(room_idx4, door_idx4);
-        new_state.pair_doors[room_idx4][door_idx4] = std::make_pair(room_idx3, door_idx3);
-        new_state.rooms[room_idx].doors[door_idx] = room_idx2;
-        new_state.rooms[room_idx2].doors[door_idx2] = room_idx;
-        new_state.rooms[room_idx3].doors[door_idx3] = room_idx4;
-        new_state.rooms[room_idx4].doors[door_idx4] = room_idx3;
-        return new_state;
-    }
-    // 7.5% の確率でルートを作り直す
-    else if (p < 975) {
-        std::vector<std::vector<int>> label_groups(4);
-        for (int i = 0; i < state.rooms.size(); i++) {
-            label_groups[state.rooms[i].label].push_back(i);
-        }
-        std::vector<std::uniform_int_distribution<>> dis_label_groups(4);
-        for (int i = 0; i < label_groups.size(); i++) {
-            dis_label_groups[i] = std::uniform_int_distribution<>(0, label_groups[i].size() - 1);
-        }
-        std::uniform_int_distribution<> dis_doors(0, 5);
+//        for (auto& mistake_door_idx : mistakes) {
+            std::uniform_int_distribution<> dis_mistake(0, mistakes.size() - 1);
+            int mistake_door_idx = mistakes[dis_mistake(gen)];
+            std::vector<int> room_transition_history;
+            int current_room_idx = state.start_room_idx;
+            room_transition_history.push_back(current_room_idx);
+            for (int i = 0; i < doors.length(); i++) {
+                int door_idx = doors[i] - '0';
+                current_room_idx = state.rooms[current_room_idx].doors[door_idx];
+                room_transition_history.push_back(current_room_idx);
+            }
 
-        State2 new_state{state};
-        new_state.start_room_idx = label_groups[labels[0]][dis_label_groups[labels[0]](gen)];
-        int current_room_idx = new_state.start_room_idx;
-        std::set<std::pair<int, int>> used_room_doors;
-        for (int i = 0; i < doors.length(); i++) {
-            int door_idx = doors[i] - '0';
-            std::vector<std::pair<int, int>> next_room_door_candidates;
-            for (auto&& next_group : label_groups[labels[i + 1]]) {
-                for (int j = 0; j < 6; j++) {
-                    if (!used_room_doors.contains(std::make_pair(next_group, j))) {
-                        next_room_door_candidates.push_back(std::make_pair(next_group, j));
+            std::vector<std::pair<int, int>> new_room_and_door_candidates;
+
+            for (int i = 0; i < state.rooms.size(); i++) {
+                if (state.rooms[i].label == labels[mistake_door_idx + 1]) {
+                    for (int j = 0; j < 6; j++) {
+                        if (!right_doors.contains(std::make_pair(i, j))) {
+                            new_room_and_door_candidates.push_back(std::make_pair(i, j));
+                        }
                     }
                 }
             }
-            int next_room = -1, next_door = -1;
-            if (next_room_door_candidates.size() == 0) {
-                next_room = label_groups[labels[i + 1]][dis_label_groups[labels[i + 1]](gen)];
-                next_door = dis_doors(gen);
+            if (new_room_and_door_candidates.size() == 0) {
+                // continue;
+                return state;
             }
-            else {
-                std::uniform_int_distribution<> dis_next_room_door(0, next_room_door_candidates.size() - 1);
-                auto next_room_door = next_room_door_candidates[dis_next_room_door(gen)];
-                next_room = next_room_door.first;
-                next_door = next_room_door.second;
-            }
-            new_state.rooms[current_room_idx].doors[door_idx] = next_room;
-            new_state.rooms[next_room].doors[next_door] = current_room_idx;
-            new_state.pair_doors[current_room_idx][door_idx] = std::make_pair(next_room, next_door);
-            new_state.pair_doors[next_room][next_door] = std::make_pair(current_room_idx, door_idx);
-            current_room_idx = next_room;
-            used_room_doors.insert(std::make_pair(current_room_idx, door_idx));
-            used_room_doors.insert(std::make_pair(next_room, next_door));
-        }
+            std::uniform_int_distribution<> dis_new_room_and_door(0, new_room_and_door_candidates.size() - 1);
+
+            int room_idx = room_transition_history[mistake_door_idx + 1];
+            int door_idx = doors[mistake_door_idx] - '0';
+            const auto& [room_idx2, door_idx2] = new_room_and_door_candidates[dis_new_room_and_door(gen)];
+            const auto& [room_idx3, door_idx3] = state.pair_doors[room_idx][door_idx];
+            const auto& [room_idx4, door_idx4] = state.pair_doors[room_idx2][door_idx2];
+            // 1, 2 と 3, 4 を pair にするように書き換える。
+            new_state.pair_doors[room_idx][door_idx] = std::make_pair(room_idx2, door_idx2);
+            new_state.pair_doors[room_idx2][door_idx2] = std::make_pair(room_idx, door_idx);
+            new_state.pair_doors[room_idx3][door_idx3] = std::make_pair(room_idx4, door_idx4);
+            new_state.pair_doors[room_idx4][door_idx4] = std::make_pair(room_idx3, door_idx3);
+            new_state.rooms[room_idx].doors[door_idx] = room_idx2;
+            new_state.rooms[room_idx2].doors[door_idx2] = room_idx;
+            new_state.rooms[room_idx3].doors[door_idx3] = room_idx4;
+            new_state.rooms[room_idx4].doors[door_idx4] = room_idx3;
+//        }
         return new_state;
     }
-    // 2.5% の確率でラベルを変更
+    // 5% の確率でラベルを変更
     else {
         std::vector<std::vector<int>> label_groups(4);
         for (int i = 0; i < state.rooms.size(); i++) {
@@ -303,15 +281,16 @@ std::string format_mistakes(const std::vector<int>& mistakes) {
 }
 
 MapData solve2(int n, const std::string& doors, const std::vector<int>& labels) {
-    State2 state = create_random_state2(n);
+    State2 state = create_random_state2(n, doors, labels);
     Feedback feedback = calculate_score(state, doors, labels);
     long long iter_count = 0;
     auto f = [](long long iter_count) -> double {
-        const double K = 100.0;
-        return std::max(0.1, K * (1 - std::exp(-iter_count / 1000000.0)));
+        const double K = 10.0;
+        return std::max(0.1, K * std::exp(-iter_count / 1000000.0));
     };
+    double max_score = feedback.score;
     int max_right_count = feedback.right_count;
-    int stagnation_threshold = 1000000;
+    int stagnation_threshold = 10000000;
     int stagnation_count = 0;
     while (true) {
         if (feedback.right_count > max_right_count) {
@@ -330,6 +309,10 @@ MapData solve2(int n, const std::string& doors, const std::vector<int>& labels) 
         double delta = next_feedback.score - feedback.score;
         double accept_prob = std::exp(delta / f(iter_count));
         if (next_feedback.score > feedback.score || p < accept_prob) {
+            if (next_feedback.score > max_score) {
+                std::cout << "score: " << max_score << " -> " << next_feedback.score << " (right_count: " << next_feedback.right_count << ", temperature: " << f(iter_count) << ")" << std::endl;
+                max_score = next_feedback.score;
+            }
             state = next_state;
             feedback = next_feedback;
         }
@@ -342,8 +325,9 @@ MapData solve2(int n, const std::string& doors, const std::vector<int>& labels) 
         iter_count++;
         if (stagnation_count == stagnation_threshold) {
             std::cout << "stagnation detected" << std::endl;
-            state = create_random_state2(n);
+            state = create_random_state2(n, doors, labels);
             feedback = calculate_score(state, doors, labels);
+            max_score = feedback.score;
             stagnation_count = 0;
             iter_count = 0;
             max_right_count = feedback.right_count;
