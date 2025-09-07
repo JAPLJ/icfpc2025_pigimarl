@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
         kagamiz::ExploreResponse explore_response = api_handler.explore(explore_request);
         std::cout << "Explore response: " << nlohmann::json(explore_response).dump() << std::endl;
         
-        kagamiz::MapData map_data = kagamiz::solve(n, plans[0], explore_response.results[0]);
+        kagamiz::MapData map_data = kagamiz::solve2(n, plans[0], explore_response.results[0]);
         kagamiz::GuessRequest guess_request{
             .id = config.token,
             .map = map_data
