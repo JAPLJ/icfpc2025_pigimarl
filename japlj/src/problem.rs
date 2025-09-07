@@ -10,6 +10,16 @@ pub enum ProblemName {
     Tertius,
     Quartus,
     Quintus,
+    Aleph,
+    Beth,
+    Gimel,
+    Daleth,
+    He,
+    Vau,
+    Zain,
+    Hhet,
+    Teth,
+    Iod,
 }
 
 impl ProblemName {
@@ -21,6 +31,16 @@ impl ProblemName {
             ProblemName::Tertius => 18,
             ProblemName::Quartus => 24,
             ProblemName::Quintus => 30,
+            ProblemName::Aleph => 12,
+            ProblemName::Beth => 24,
+            ProblemName::Gimel => 36,
+            ProblemName::Daleth => 48,
+            ProblemName::He => 60,
+            ProblemName::Vau => 18,
+            ProblemName::Zain => 36,
+            ProblemName::Hhet => 54,
+            ProblemName::Teth => 72,
+            ProblemName::Iod => 90,
         }
     }
 }

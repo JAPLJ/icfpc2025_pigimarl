@@ -1,6 +1,6 @@
 use anyhow::Result;
 use japlj::problem::ProblemName;
-use japlj::solver2::Solver2;
+use japlj::solver3::Solver3;
 use std::env;
 use std::str::FromStr;
 
@@ -17,8 +17,8 @@ fn main() -> Result<()> {
         .map(|pn| pn.nodes())
         .unwrap_or_else(|_| problem_name.parse::<usize>().unwrap());
 
-    for trial in 0..3600 {
-        let solver = Solver2::new(&problem_name, n)?;
+    for trial in 0..100 {
+        let solver = Solver3::new(&problem_name, n)?;
         println!("trial: {}", trial);
         match solver.solve() {
             Ok(query_count) => {
