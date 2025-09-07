@@ -100,17 +100,19 @@ impl Solver3 {
         let mut labels = vec![!0; self.n];
         let mut edges = vec![vec![!0; DEGREE]; self.n];
 
-        let discriminator_len = 10;
+        let discriminator_len = 6;
         let mut discriminator = vec![];
         for i in 0..discriminator_len {
-            discriminator.push(i % DEGREE);
-            // discriminator.push(rng.random_range(0..DEGREE));
+            discriminator.push(WalkStep::Edge(i % DEGREE));
+            discriminator.push(WalkStep::Rewrite(rng.random_range(0..LABELS)));
         }
 
         let random_walk_len = self.n * 6 - discriminator_len - 1;
         let (random_walk, first, ixs) = self.classify_vertices(&mut rng, random_walk_len)?;
         let mut rw_pos = vec![!0; self.n];
+        let mut rw_last_pos = vec![!0; self.n];
         for i in 0..ixs.len() {
+            rw_last_pos[ixs[i]] = i;
             if rw_pos[ixs[i]] == !0 {
                 rw_pos[ixs[i]] = i;
                 labels[ixs[i]] = first[i];
@@ -123,6 +125,11 @@ impl Solver3 {
             return Err(anyhow::anyhow!("cannot distinguish vertices"));
         }
 
+        let random_walk = random_walk
+            .iter()
+            .map(|x| WalkStep::Edge(*x))
+            .collect::<Vec<WalkStep>>();
+
         let mut footprints = HashMap::new();
         let mut fp_plans = vec![];
         for u in 0..self.n {
@@ -131,18 +138,16 @@ impl Solver3 {
             plan.extend_from_slice(&discriminator);
             fp_plans.push(plan);
         }
-        let fp_res = self.api.explore(&fp_plans)?.results;
+        let fp_res = self.api.explore_full(&fp_plans)?.results;
+        let mut fps = vec![];
         for u in 0..self.n {
             let pattern = fp_res[u][rw_pos[u]..]
                 .iter()
                 .map(|x| x.to_string())
                 .collect::<Vec<String>>()
                 .join("");
-            if !footprints.contains_key(&pattern) {
-                footprints.insert(pattern, u);
-            } else {
-                return Err(anyhow::anyhow!("footprint collision"));
-            }
+            fps.push(pattern.clone());
+            footprints.entry(pattern).or_insert(vec![]).push(u);
         }
 
         let mut edge_ids = vec![];
@@ -154,27 +159,79 @@ impl Solver3 {
                 }
                 let mut plan = vec![];
                 plan.extend_from_slice(&random_walk[..rw_pos[u]]);
-                plan.push(e);
+                plan.push(WalkStep::Edge(e));
                 plan.extend_from_slice(&discriminator);
                 edge_ids.push((u, e));
                 edge_plans.push(plan);
             }
         }
 
-        let final_res = self.api.explore(&edge_plans)?;
-        let (query_count, edges_res) = (final_res.query_count, final_res.results);
-
+        let edges_res = self.api.explore_full(&edge_plans)?.results;
+        let mut edge_candidates = vec![];
+        let mut edge_ok = true;
         for (&(u, e), res) in edge_ids.iter().zip(edges_res.iter()) {
             let pattern = res[rw_pos[u] + 1..]
                 .iter()
                 .map(|x| x.to_string())
                 .collect::<Vec<String>>()
                 .join("");
-            if let Some(&v) = footprints.get(&pattern) {
-                edges[u][e] = v;
+            if let Some(v) = footprints.get(&pattern) {
+                if v.len() > 1 {
+                    edge_candidates.push((u, e, v.clone()));
+                    for &w in v {
+                        edge_ok &= rw_pos[w] < rw_last_pos[u];
+                    }
+                } else {
+                    edges[u][e] = v[0];
+                }
             } else {
                 return Err(anyhow::anyhow!("pattern not found"));
             }
+        }
+        if !edge_ok {
+            return Err(anyhow::anyhow!("edge not ok"));
+        }
+
+        let mut edge_plans = vec![];
+        let mut edge_plans_ixs = vec![];
+        for (u, e, v) in edge_candidates {
+            let mut base = 1;
+            let mut candidate_ix = vec![!0; random_walk.len() + 1];
+            for (i, &w) in v.iter().enumerate() {
+                candidate_ix[rw_pos[w]] = i;
+            }
+            let start_ix = edge_plans.len();
+            while base < v.len() {
+                let mut plan = vec![];
+                for i in 0..rw_last_pos[u] {
+                    if candidate_ix[i] != !0 {
+                        plan.push(WalkStep::Rewrite(candidate_ix[i] / base % LABELS));
+                    }
+                    if i < random_walk.len() {
+                        plan.push(random_walk[i]);
+                    }
+                }
+                plan.push(WalkStep::Edge(e));
+                edge_plans.push(plan);
+                base *= LABELS;
+            }
+            edge_plans_ixs.push((u, e, v.clone(), start_ix, edge_plans.len()));
+        }
+
+        let final_res = self.api.explore_full(&edge_plans)?;
+        let (query_count, edges_res) = (final_res.query_count, final_res.results);
+        for (u, e, v, start_ix, end_ix) in edge_plans_ixs {
+            let mut cand_ix = 0;
+            for i in (start_ix..end_ix).rev() {
+                let label = edges_res[i][edges_res[i].len() - 1];
+                cand_ix = cand_ix * LABELS + label;
+            }
+            println!("cands[{}][{}] = {:?} => {}", u, e, v, cand_ix);
+            edges[u][e] = v[cand_ix];
+        }
+
+        for u in 0..self.n {
+            println!("edges[{}]: {:?}", u, edges[u]);
         }
 
         if !self.api.guess(&labels, &edges, 0)? {
