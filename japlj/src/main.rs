@@ -1,6 +1,6 @@
 use anyhow::Result;
 use japlj::problem::ProblemName;
-use japlj::solver4::Solver4;
+use japlj::solver5::Solver5;
 use std::env;
 use std::str::FromStr;
 
@@ -18,7 +18,7 @@ fn main() -> Result<()> {
         .unwrap_or_else(|_| problem_name.parse::<usize>().unwrap());
 
     for trial in 0..100 {
-        let solver = Solver4::new(&problem_name, n)?;
+        let mut solver = Solver5::new(&problem_name, n)?;
         println!("trial: {}", trial);
         match solver.solve() {
             Ok(query_count) => {
