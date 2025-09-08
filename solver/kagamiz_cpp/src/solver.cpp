@@ -4,6 +4,8 @@
 #include <stdexcept>
 #include <openssl/evp.h>
 #include <random>
+#include <sstream>
+
 namespace kagamiz {
 
 std::string serialize_state(const State& state) {
@@ -43,7 +45,18 @@ std::string serialize_state(const State& state) {
     return result;
 }
 
-
+std::string format_vector(const std::vector<int>& vector) {
+    std::stringstream ss;
+    ss << "[";
+    for (const auto& v : vector) {
+        ss << v;
+        if (v != vector.back()) {
+            ss << ",";
+        }
+    }
+    ss << "]";
+    return ss.str();
+}
 
 std::shared_ptr<MapData> dfs(
     int n, 
@@ -54,15 +67,21 @@ std::shared_ptr<MapData> dfs(
 ) {
     static int max_idx = 0;
     static int memo_size_checkpoint = 0;
-    if (state.idx > max_idx) {
-        max_idx = state.idx;
-        std::cout << "max_idx: " << max_idx << std::endl;
+    
+    auto serialized_state = serialize_state(state);
+
+    std::vector<int> label_cnt(4, 0);
+    for (int i = 0; i < state.rooms.size(); i++) {
+        if (state.rooms[i].label != -1) {
+            label_cnt[state.rooms[i].label]++;
+        }
     }
-    if (memo.size() > memo_size_checkpoint) {
-        std::cout << "memo_size_checkpoint: " << memo_size_checkpoint << std::endl;
-        memo_size_checkpoint += 100000;
+    for (int i = 0; i < 4; i++) {
+        if (label_cnt[i] > (n + 3) / 4) {
+            memo[serialized_state] = nullptr;
+            return nullptr;
+        }
     }
-    std::string serialized_state = serialize_state(state);
 
     std::vector<int> room_in_degree(n, 0);
     for (const auto& room : state.rooms) {
@@ -80,14 +99,115 @@ std::shared_ptr<MapData> dfs(
             return nullptr;
         }
     }
+
+    // グラフ全体が連結でなければならない
+    UnionFind uf(n);
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < 6; j++) {
+            if (state.rooms[i].doors[j] != -1) {
+                uf.unite(i, state.rooms[i].doors[j]);
+            }
+        }
+    }
+    std::vector<std::vector<int>> connected_components(n);
+    for (int i = 0; i < n; i++) {
+        connected_components[uf.find(i)].push_back(i);
+    }
+
+    for (const auto& connected_component : connected_components) {
+        if (connected_component.size() == 0) {
+            continue;
+        }
+        bool has_undetermined_door = false;
+        for (const auto& room : connected_component) {
+            for (int j = 0; j < 6; j++) {
+                if (state.rooms[room].doors[j] == -1) {
+                    has_undetermined_door = true;
+                    break;
+                }
+            }
+            if (has_undetermined_door) {
+                break;
+            }
+        }
+        static int counter = 0;
+        if (!has_undetermined_door && connected_component.size() < n) {
+            counter++;
+            std::cout << "counter: " << counter << std::endl;
+            memo[serialized_state] = nullptr;
+            return nullptr;
+        }
+    }
+
+    // 行き先が決まっているドアの情報から逆引きのための情報を作成
+    std::vector<std::vector<int>> reverse_lookup(n);
+    for (int i = 0; i < n; i++) {
+        const auto& room = state.rooms[i];
+        for (const auto& door : room.doors) {
+            if (door != -1) {
+                reverse_lookup[door].push_back(i);
+            }
+        }
+    }
+    {
+    // 逆引き情報から行き先が決まっていないドアの情報の補完を試みる
+    for (int i = 0; i < n; i++) {
+        auto& room = state.rooms[i];
+
+        bool used[6] = {false, false, false, false, false, false};
+        for (const auto& expected_room: reverse_lookup[i]) {
+            bool matching_door_found = false;
+            for (int door_idx = 0; door_idx < 6; door_idx++) {
+                if (used[door_idx]) {
+                    continue;
+                }
+                if (room.doors[door_idx] == expected_room) {
+                    used[door_idx] = true;
+                    matching_door_found = true;
+                    break;
+                }
+            }
+            if (matching_door_found) {
+                continue;
+            }
+            for (int door_idx = 0; door_idx < 6; door_idx++) {
+                if (used[door_idx]) {
+                    continue;
+                }
+                if (room.doors[door_idx] == -1) {
+                    used[door_idx] = true;
+                    matching_door_found = true;
+                    break;
+                }
+            }
+            if (!matching_door_found) {
+//                    std::cout << "matching_door_found is false" << std::endl;
+                memo[serialized_state] = nullptr;
+                return nullptr;
+            }
+        }
+    }
+}
+
+    if (state.idx > max_idx) {
+        max_idx = state.idx;
+        std::cout << "max_idx: " << max_idx << std::endl;
+//        std::cout << format_rooms(state.rooms) << std::endl;
+    }
     
     if (state.idx == static_cast<int>(doors.length())) {
         auto rooms = state.rooms;
-        std::cout << "dfs completed(rooms=" << format_rooms(rooms) << ")" << std::endl;
+//        std::cout << "dfs completed(rooms=" << format_rooms(rooms) << ")" << std::endl;
+
+        if (connected_components[uf.find(0)].size() != n) {
+            memo[serialized_state] = nullptr;
+            return nullptr;
+        }
         
         std::unordered_map<int, int> label_cnt;
         for (const auto& room : rooms) {
             if (room.label == -1) {
+//                std::cout << "room.label == -1" << std::endl;
                 memo[serialized_state] = nullptr;
                 return nullptr;
             }
@@ -97,6 +217,7 @@ std::shared_ptr<MapData> dfs(
         // Check if labels are evenly distributed
         for (const auto& [label, cnt] : label_cnt) {
             if (cnt != n / 4 && cnt != (n + 3) / 4) {
+//                std::cout << "label_cnt[" << label << "] = " << cnt << " is not " << n / 4 << " or " << (n + 3) / 4 << std::endl;
                 memo[serialized_state] = nullptr;
                 return nullptr;
             }
@@ -141,6 +262,7 @@ std::shared_ptr<MapData> dfs(
                         matching_door_found = true;
                         room_in_degree[expected_room]++;
                         if (room_in_degree[expected_room] > 6) {
+//                            std::cout << "room_in_degree[" << expected_room << "] > 6" << std::endl;
                             memo[serialized_state] = nullptr;
                             return nullptr;
                         }
@@ -148,6 +270,7 @@ std::shared_ptr<MapData> dfs(
                     }
                 }
                 if (!matching_door_found) {
+//                    std::cout << "matching_door_found is false" << std::endl;
                     memo[serialized_state] = nullptr;
                     return nullptr;
                 }
@@ -179,6 +302,7 @@ std::shared_ptr<MapData> dfs(
             .starting_room = 0,
             .connections = create_connections(rooms)
         });
+        std::cout << "dfs completed(rooms=" << format_rooms(rooms) << ")" << std::endl;
         
         memo[serialized_state] = result;
         return result;
@@ -186,12 +310,14 @@ std::shared_ptr<MapData> dfs(
     
     // Move from current room through door doors[idx] to room with label labels[idx+1]
     int door_idx = doors[state.idx] - '0';
-    if (state.rooms[state.current_room_idx].doors[door_idx] != -1) {
-        int next_room_idx = state.rooms[state.current_room_idx].doors[door_idx];
-        if (state.rooms[next_room_idx].label == labels[state.idx + 1]) {
+
+    for (int next_room_idx = 0; next_room_idx < n; next_room_idx++) {
+        if (state.rooms[next_room_idx].label == -1) {
             State next_state(state.rooms, state.idx + 1, next_room_idx);
-            std::string next_state_serialized = serialize_state(next_state);
+            next_state.rooms[next_room_idx].label = labels[state.idx + 1];
+            next_state.rooms[state.current_room_idx].doors[door_idx] = next_room_idx;
             
+            std::string next_state_serialized = serialize_state(next_state);
             if (memo.find(next_state_serialized) == memo.end()) {
                 memo[next_state_serialized] = dfs(n, doors, labels, next_state, memo);
             }
@@ -199,11 +325,12 @@ std::shared_ptr<MapData> dfs(
             if (memo[next_state_serialized] != nullptr) {
                 return memo[next_state_serialized];
             }
+            next_state.rooms[next_room_idx].label = -1;
+            next_state.rooms[state.current_room_idx].doors[door_idx] = -1;
+            break;
         }
-        memo[serialized_state] = nullptr;
-        return nullptr;
     }
-    
+
     // Find next room candidates
     int next_room_candidates_count = 0;
     for (int next_room_idx = 0; next_room_idx < n; next_room_idx++) {
@@ -225,19 +352,13 @@ std::shared_ptr<MapData> dfs(
         }
         next_state.rooms[state.current_room_idx].doors[door_idx] = -1;
     }
-    
-    if (next_room_candidates_count >= (n + 3) / 4) {
-        memo[serialized_state] = nullptr;
-        return nullptr;
-    }
-    
-    for (int next_room_idx = 0; next_room_idx < n; next_room_idx++) {
-        if (state.rooms[next_room_idx].label == -1) {
+
+    if (state.rooms[state.current_room_idx].doors[door_idx] != -1) {
+        int next_room_idx = state.rooms[state.current_room_idx].doors[door_idx];
+        if (state.rooms[next_room_idx].label == labels[state.idx + 1]) {
             State next_state(state.rooms, state.idx + 1, next_room_idx);
-            next_state.rooms[next_room_idx].label = labels[state.idx + 1];
-            next_state.rooms[state.current_room_idx].doors[door_idx] = next_room_idx;
-            
             std::string next_state_serialized = serialize_state(next_state);
+            
             if (memo.find(next_state_serialized) == memo.end()) {
                 memo[next_state_serialized] = dfs(n, doors, labels, next_state, memo);
             }
@@ -245,8 +366,6 @@ std::shared_ptr<MapData> dfs(
             if (memo[next_state_serialized] != nullptr) {
                 return memo[next_state_serialized];
             }
-            next_state.rooms[next_room_idx].label = -1;
-            next_state.rooms[state.current_room_idx].doors[door_idx] = -1;
         }
     }
     

@@ -16,8 +16,9 @@ std::string create_random_plan(int n) {
     std::uniform_int_distribution<> dis(0, 5);
     
     std::string plan;
-    plan.reserve(18 * n);
-    for (int i = 0; i < 18 * n; i++) {
+    int plan_length = 18 * n;
+    plan.reserve(plan_length);
+    for (int i = 0; i < plan_length; i++) {
         plan += std::to_string(dis(gen));
     }
     return plan;
