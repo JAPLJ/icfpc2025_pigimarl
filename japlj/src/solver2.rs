@@ -217,7 +217,7 @@ impl Solver2 {
         let res = self.api.explore(&vec![plan.clone()])?;
 
         let mut cfg = Config::new();
-        cfg.set_timeout_msec(3000);
+        cfg.set_timeout_msec(1000);
 
         if !with_z3_config(&cfg, || self.construct_graph(&plan, &res.results[0]))? {
             return Err(anyhow::anyhow!("construct_graph failed"));
