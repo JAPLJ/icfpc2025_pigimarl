@@ -63,6 +63,16 @@ class UnionFindDict:
             self.parent[x] = x
             self.rank[x] = 0
 
+    def same(self, x, y):
+        if x not in self.parent or y not in self.parent:
+            return False
+        return self.find(x) == self.find(y)
+
+    def copy(self):
+        new_uf = UnionFindDict(list(self.parent.keys()))
+        new_uf.parent = self.parent.copy()
+        new_uf.rank = self.rank.copy()
+        return new_uf
 
 if __name__ == "__main__":
     uf = UnionFindDict([6, 2, "a", 4, 5])

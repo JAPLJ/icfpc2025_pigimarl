@@ -13,19 +13,13 @@ from math import floor, ceil
 BASE_URL = os.getenv("BASE_URL")
 ID = os.getenv("ID")
 
-# N = 6
-N = 30
-MIN_PATTERN_LEN = 4
+N = 6
+# N = 30
 PLAN_LENGTH = 18 * N
 
-seed = 2
+seed = 1
 
 magic_walks = []
-# magic_walk = "012345"
-# magic_walk = "01012"
-# magic_walk = "012345001122334455"
-# magic_walk = "01234531512445"
-# magic_walk = "0123450143450123"
 
 def emulate_plans(plans):
     fname = "../tester/graph.txt"
@@ -48,6 +42,7 @@ def emulate_plans(plans):
     print("visited_edges")
     print(f"{sum(sum(visited_edges, []))}/{total_edges}")
 
+
 def send_select(problem_name):
     res = requests.post(
         f"{BASE_URL}/select",
@@ -56,24 +51,24 @@ def send_select(problem_name):
     return res.json()
 
 
-def create_plans():
+def create_plans(plans_len=3, magic_walk_len=5, random_walk_len=10, use_same_magic_walk=False):
     res = []
     random.seed(seed)
 
-    # walk = ""
-    # while len(walk) < PLAN_LENGTH:
-    #     ll = random.randrange(1, 10)
-    #     walk += "".join(random.choices("012345", k=ll)) + magic_walk
-    # walk = walk[:PLAN_LENGTH]
-    # res.append(walk)
+    if use_same_magic_walk:
+        magic_walks.append("".join(random.choices("012345", k=magic_walk_len)))
+        print(f"magic_walk: {magic_walks}")
 
-    for _ in range(3):
-        magic_walk = "".join(random.choices("012345", k=5))
+    for _ in range(plans_len):
+        if use_same_magic_walk:
+            magic_walk = magic_walks[0]
+        else:
+            magic_walk = "".join(random.choices("012345", k=magic_walk_len))
+            print(f"magic_walk: {magic_walk}")
         magic_walks.append(magic_walk)
-        print(f"magic_walk: {magic_walk}")
-        walk = ""
+        walk = magic_walk
         while len(walk) < PLAN_LENGTH:
-            ll = random.randrange(1, 10)
+            ll = random.randrange(1, random_walk_len)
             walk += "".join(random.choices("012345", k=ll)) + magic_walk
         walk = walk[:PLAN_LENGTH]
         res.append(walk)
@@ -166,6 +161,7 @@ def create_guess(plans, explore_res):
     map_ = defaultdict(dict)
     suffixes = {0: 0, 1: 0, 2: 0, 3: 0}
     rooms_list = []
+    signatures = {}
 
     for li,labels in enumerate(explore_res["results"]):
         rooms = [0 for i in range(len(labels))]
@@ -175,6 +171,8 @@ def create_guess(plans, explore_res):
             rooms[i] = f"{labels[i]}_{hex(suffixes[labels[i]])[2:]}"
             suffixes[labels[i]] += 1
         rooms_list.append(rooms)
+
+    # uf を初期化
     uf = UnionFindDict([room for rooms in rooms_list for room in rooms])
     for li in range(1, len(rooms_list)):
         uf.union(rooms_list[0][0], rooms_list[li][0])
@@ -182,57 +180,115 @@ def create_guess(plans, explore_res):
     for li, labels in enumerate(explore_res["results"]):
         rooms = rooms_list[li]
         magic_walk = magic_walks[li]
-        for pattern_len in range(len(magic_walk), MIN_PATTERN_LEN - 1, -1):
-            # magic_walk をしたときに同じラベルが出る => その部分は同じ部屋
-            changed = True
-            while changed:
-                changed = False
-                for pi in range(0, len(magic_walk) - pattern_len + 1):
-                    memo = {}
-                    pattern = re.compile(magic_walk[pi:pi + pattern_len])
-                    # print(f"pattern: {pattern}")
-                    itr = pattern.finditer(plans[li])
-                    for match in itr:
-                        start = match.start()
-                        end = match.end()
-                        label_seq = "".join(map(str, labels[start:end + 1]))
-                        same_seq_start = memo.get(label_seq, -1)
-                        # 初めてその label_seq が出てくるならその場所をメモる
-                        if same_seq_start == -1:
-                            memo[label_seq] = start
-                        # 以前見た label_seq ならその部分は同じ部屋
-                        else:
-                            for i in range(start, end + 1):
-                                if not uf.same(rooms[i], rooms[same_seq_start + i - start]):
-                                    changed = True
-                                    uf.union(rooms[i], rooms[same_seq_start + i - start])
+        pattern = re.compile(magic_walk)
+        # magic_walk をしたときに同じラベルが出る => その部分は同じ部屋
+        changed = True
+        memo = {}
+        while changed:
+            changed = False
+            # print(f"pattern: {pattern}")
+            itr = pattern.finditer(plans[li])
+            for match in itr:
+                start = match.start()
+                end = match.end()
+                label_seq = "".join(map(str, labels[start:end + 1]))
+                signatures[label_seq] = uf.find(rooms[start])
+                same_seq_start = memo.get(label_seq, -1)
+                # 初めてその label_seq が出てくるならその場所をメモる
+                if same_seq_start == -1:
+                    memo[label_seq] = start
+                # 以前見た label_seq ならその部分は同じ部屋
+                else:
+                    for i in range(start, end + 1):
+                        if not uf.same(rooms[i], rooms[same_seq_start + i - start]):
+                            changed = True
+                            uf.union(rooms[i], rooms[same_seq_start + i - start])
 
-                    # map_ を作成
-                    for i in range(len(plans[li])):
-                        door = plans[li][i]
-                        room_from = rooms[i]
-                        room_to = rooms[i + 1]
-                        room_to_by_map = map_[room_from].get(door, "_")
-                        # map_ に記載がない
-                        if room_to_by_map == "_":
-                            map_[room_from][door] = room_to
-                        # すでに記述がある => その2つの部屋は同じ部屋
-                        elif room_to_by_map != room_to:
-                            assert room_to_by_map[0] == room_to[0], f"different label. room_from: {room_from}, door: {door}, room_to_by_map: {room_to_by_map}, room_to: {room_to}, pattern: {magic_walk[pi:pi + pattern_len]}"
-                            if not uf.same(room_to, room_to_by_map):
-                                changed = True
-                            uf.union(room_to, room_to_by_map)
+                # map_ を作成
+                for i in range(len(plans[li])):
+                    door = plans[li][i]
+                    room_from = rooms[i]
+                    room_to = rooms[i + 1]
+                    room_to_by_map = map_[room_from].get(door, "_")
+                    # map_ に記載がない
+                    if room_to_by_map == "_":
+                        map_[room_from][door] = room_to
+                    # すでに記述がある => その2つの部屋は同じ部屋
+                    elif room_to_by_map != room_to:
+                        assert room_to_by_map[0] == room_to[0], f"different label. room_from: {room_from}, door: {door}, room_to_by_map: {room_to_by_map}, room_to: {room_to}, pattern: {magic_walk}"
+                        if not uf.same(room_to, room_to_by_map):
+                            changed = True
+                        uf.union(room_to, room_to_by_map)
 
-            map_, rooms_list = squash_rooms_list(rooms_list, map_, uf)
+        map_, rooms_list = squash_rooms_list(rooms_list, map_, uf)
 
+    print(f"signatures: {len(signatures)}: {signatures}")
     # for i in range(len(plans[0])):
     #     print(f"{labels[i]}:{rooms[i]} -- {plans[li][i]} -> {labels[i + 1]}:{rooms[i + 1]}")
+    # pprint(map_)
+    print(f"len(map_): {len(map_)}")
+
+    map_, rooms_list = attempt_merge_rooms(explore_res["results"], rooms_list, map_, uf)
+    # pprint(map_)
+    print(f"len(map_): {len(map_)}")
+    print(f"rooms: {rooms_list[0][:20]}")
+
+    starting_room = uf.find(rooms_list[0][0])
+    print(f"starting_room: {starting_room}")
+
+    # magic_walk 中に辿った経路の signature を取得
+    magic_walk = magic_walks[0]
+    next_plans = [magic_walk * 2]
+    for i in range(1, len(magic_walk)):
+        next_plan = magic_walk[:-i] + magic_walk
+        next_plans.append(next_plan)
+    next_plans = list(reversed(next_plans))
+    print(f"next_plans: {next_plans}")
+    next_explore_res = send_explore(next_plans)
+    next_signatures = []
+    for li, labels in enumerate(next_explore_res["results"]):
+        next_signatures.append("".join(map(str, labels[-1 - len(magic_walk):])))
+    print(f"next_signatures: {next_signatures}")
+    # 以前辿ったルート上で、 signature に対応する部屋を探す
+    for i, next_signature in enumerate(next_signatures):
+        room_by_signature = signatures.get(next_signature, None)
+        if room_by_signature is None:
+            continue
+        room = rooms_list[0][i + 1]
+        assert room_by_signature[0] == room[0], f"different label. room: {room}, room_by_signature: {room_by_signature}"
+        uf.union(room, room_by_signature)
+        print(f"union: {room} -- {room_by_signature}")
+    map_, rooms_list = squash_rooms_list(rooms_list, map_, uf)
+    print(f"len(map_): {len(map_)}")
+    # print(f"map_: {map_}")
+    # print(f"rooms: {rooms_list[0][:20]}")
+
+    # map_ を作成
+    for li in range(len(plans)):
+        rooms = rooms_list[li]
+        for i in range(len(plans[li])):
+            door = plans[li][i]
+            room_from = rooms[i]
+            room_to = rooms[i + 1]
+            room_to_by_map = map_[room_from].get(door, "_")
+            # map_ に記載がない
+            if room_to_by_map == "_":
+                map_[room_from][door] = room_to
+            # すでに記述がある => その2つの部屋は同じ部屋
+            elif room_to_by_map != room_to:
+                assert room_to_by_map[0] == room_to[0], f"different label. room_from: {room_from}, door: {door}, room_to_by_map: {room_to_by_map}, room_to: {room_to}, pattern: {magic_walk}"
+                # if not uf.same(room_to, room_to_by_map):
+                #     changed = True
+                uf.union(room_to, room_to_by_map)
+    map_, rooms_list = squash_rooms_list(rooms_list, map_, uf)
+    print(f"len(map_): {len(map_)}")
+    # print(f"map_: {map_}")
+    # print(f"rooms: {rooms_list[0][:20]}")
+
+    map_, rooms_list = attempt_merge_rooms(explore_res["results"], rooms_list, map_, uf)
     pprint(map_)
     print(f"len(map_): {len(map_)}")
 
-    # map_ = attempt_merge_rooms(explore_res["results"], rooms_list, map_, uf)
-    # pprint(map_)
-    # print(len(map_))
 
     # # room0 --door0-> room1 --door1-> room2 --door2-> room3 --door3-> room4
     # rdr_counter = Counter()
@@ -259,12 +315,6 @@ def create_guess(plans, explore_res):
     # pprint(map_)
     # pprint(map_with_door)
 
-    # # decide starting room
-    # starting_room = None
-    # for (room, next_rooms) in map_with_door.items():
-    #     if next_rooms[plans[0][0]][0] == rooms[0]:
-    #         starting_room = room
-    #         break
 
 
     # room_list = list(map_.keys())
@@ -305,7 +355,7 @@ def has_similar_door(r1, r2, map_):
     r1_doors = set(map_[r1].keys())
     r2_doors = set(map_[r2].keys())
     intersection = r1_doors & r2_doors
-    if len(intersection) <= 1:
+    if len(intersection) <= 2:
         return False
     for door in intersection:
         if map_[r1][door][0] != map_[r2][door][0]:
@@ -343,65 +393,6 @@ def is_good_groups(used_labels, rooms_list, map_, uf):
 
 
 def attempt_merge_rooms(labels_list, rooms_list, map_, uf):
-    def dfs_merge(rooms_list, map_, uf, mergeable_pairs, mergeable={}, mpi=0):
-        stack = deque()
-        initial_state = (rooms_list, map_, uf, mergeable.copy(), mpi, set())
-        stack.append(initial_state)
-        last_label = mergeable_pairs[0][0][0]
-
-        while stack:
-            # print(f"stack: {len(stack)}")
-            current = stack[0]
-            rooms_list, map_, uf, mergeable, mpi, used_labels = current
-            # print(f"stack: r1r2 {mergeable_pairs[mpi]}, uf.parent: {uf.parent}")
-            # input()
-            stack.popleft()  # 現在の状態を削除
-
-            # Base case: processed all mergeable pairs
-            if mpi >= len(mergeable_pairs):
-                map_, rooms_list = squash_rooms_list(rooms_list, map_, uf)
-                print(f"is_good_map?")
-                pprint(map_)
-                input()
-                if is_good_map(map_, rooms_list, uf):
-                    return map_, rooms_list
-                continue
-
-            r1, r2 = mergeable_pairs[mpi]
-            # print(f"r1: {r1}, r2: {r2}")
-
-            if uf.same(r1, r2):
-                new_state = (rooms_list, map_, uf, mergeable, mpi + 1, used_labels)
-                stack.appendleft(new_state)
-                continue
-
-            label = r1[0]
-            if not label in used_labels:
-                if not is_good_groups(used_labels, rooms_list, map_, uf):
-                    # print(f"not good groups: {used_labels}. stack: {len(stack)}")
-                    continue
-                used_labels.add(label)
-
-            #  don't merge this pair
-            new_mergeable = mergeable.copy()
-            new_mergeable[(r1, r2)] = False
-            new_state = (rooms_list, map_, uf, new_mergeable, mpi + 1, used_labels)
-            stack.appendleft(new_state)
-
-            # merge this pair
-            if merge_possible(r1, r2, map_, mergeable, uf):
-                new_mergeable[(r1, r2)] = True
-                new_uf = uf.copy()
-                new_uf.union(r1, r2)
-                new_state = (rooms_list, map_, new_uf, new_mergeable, mpi + 1, used_labels)
-                stack.appendleft(new_state)
-                # print(f"merge {r1} and {r2}")
-
-        raise ValueError("not mergeable")
-
-    mergeable_pairs = []
-    mergeable = {}
-
     label_groups = {}
     for li in range(len(labels_list)):
         labels = labels_list[li]
@@ -411,31 +402,15 @@ def attempt_merge_rooms(labels_list, rooms_list, map_, uf):
                 label_groups[label] = set()
             label_groups[label].add(room)
 
-    # print(f"label_groups: {label_groups}")
     for label, room_set in label_groups.items():
-        # print(f"label: {label}, room_set: {room_set}")
         for r1, r2 in combinations(room_set, 2):
             if uf.same(r1, r2):
                 continue
             # 似たドアを使っているならマージ可能
             if has_similar_door(r1, r2, map_):
                 uf.union(r1, r2)
-                mergeable[(r1, r2)] = True
                 continue
-            # マージしても良いならマージ候補に追加
-            if merge_possible(r1, r2, map_, mergeable, uf):
-                mergeable_pairs.append((r1, r2))
-    # pprint(mergeable_pairs)
-
-    print(f"mergeable_pairs: {len(mergeable_pairs)}")
-    mergeable_pairs = list(sorted(mergeable_pairs, key=lambda x: x[0][0]))
-    # pprint(mergeable_pairs[:20])
-    new_map, new_rooms_list = dfs_merge(rooms_list, map_, uf, mergeable_pairs, mergeable)
-    if new_map is False:
-        print("not mergeable")
-        return False, False
-    print(f"new_map: {len(new_map)}")
-    print(f"new_rooms_list: {len(new_rooms_list)}")
+    new_map, new_rooms_list = squash_rooms_list(rooms_list, map_, uf)
     return new_map, new_rooms_list
 
 
@@ -449,7 +424,7 @@ def send_guess(guess):
 def main():
     # send_select(f"{N}")
 
-    plans = create_plans()
+    plans = create_plans(2, magic_walk_len=4, random_walk_len=5, use_same_magic_walk=True)
     print(f"'{json.dumps(plans)}'")
 
     explore_res = send_explore(plans)
@@ -464,3 +439,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

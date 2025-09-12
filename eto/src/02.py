@@ -21,11 +21,6 @@ PLAN_LENGTH = 18 * N
 seed = 2
 
 magic_walks = []
-# magic_walk = "012345"
-# magic_walk = "01012"
-# magic_walk = "012345001122334455"
-# magic_walk = "01234531512445"
-# magic_walk = "0123450143450123"
 
 def emulate_plans(plans):
     fname = "../tester/graph.txt"
@@ -59,13 +54,6 @@ def send_select(problem_name):
 def create_plans():
     res = []
     random.seed(seed)
-
-    # walk = ""
-    # while len(walk) < PLAN_LENGTH:
-    #     ll = random.randrange(1, 10)
-    #     walk += "".join(random.choices("012345", k=ll)) + magic_walk
-    # walk = walk[:PLAN_LENGTH]
-    # res.append(walk)
 
     for _ in range(3):
         magic_walk = "".join(random.choices("012345", k=5))
@@ -227,10 +215,10 @@ def create_guess(plans, explore_res):
 
     # for i in range(len(plans[0])):
     #     print(f"{labels[i]}:{rooms[i]} -- {plans[li][i]} -> {labels[i + 1]}:{rooms[i + 1]}")
-    pprint(map_)
+    # pprint(map_)
     print(f"len(map_): {len(map_)}")
 
-    # map_ = attempt_merge_rooms(explore_res["results"], rooms_list, map_, uf)
+    map_ = attempt_merge_rooms(explore_res["results"], rooms_list, map_, uf)
     # pprint(map_)
     # print(len(map_))
 
@@ -381,6 +369,7 @@ def attempt_merge_rooms(labels_list, rooms_list, map_, uf):
                     # print(f"not good groups: {used_labels}. stack: {len(stack)}")
                     continue
                 used_labels.add(label)
+                print(f"used_labels: {used_labels}")
 
             #  don't merge this pair
             new_mergeable = mergeable.copy()
@@ -425,6 +414,7 @@ def attempt_merge_rooms(labels_list, rooms_list, map_, uf):
             # マージしても良いならマージ候補に追加
             if merge_possible(r1, r2, map_, mergeable, uf):
                 mergeable_pairs.append((r1, r2))
+        break
     # pprint(mergeable_pairs)
 
     print(f"mergeable_pairs: {len(mergeable_pairs)}")
